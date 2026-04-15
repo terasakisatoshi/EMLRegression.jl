@@ -3,14 +3,16 @@ using StableRNGs: StableRNG
 """
     TargetSpec
 
-ターゲット関数の定義、入力サンプラ、評価器をまとめた構造体です。
+paper benchmark target の定義です。離散 EML tree を source of truth とし、
+数値評価はその tree から導出します。
 """
 struct TargetSpec
     name::Symbol
     arity::Int
     tier::Symbol
+    depth::Int
+    tree::RecoveredTree
     sampler::Function
-    evaluator::Function
 end
 
 function _sample_positive(rng, n)
@@ -21,30 +23,91 @@ function _sample_centered(rng, n)
     return ComplexF64.(-1.0 .+ rand(rng, n) .* 2.0)
 end
 
-const TARGETS = Dict{Symbol,TargetSpec}(
-    :exp => TargetSpec(:exp, 1, :must_pass, (rng, n) -> _sample_centered(rng, n), xs -> exp.(xs)),
-    :ln => TargetSpec(:ln, 1, :must_pass, (rng, n) -> _sample_positive(rng, n), xs -> log.(xs)),
-    :neg => TargetSpec(:neg, 1, :must_pass, (rng, n) -> _sample_centered(rng, n), xs -> .-xs),
-    :inv => TargetSpec(:inv, 1, :must_pass, (rng, n) -> _sample_positive(rng, n), xs -> inv.(xs)),
-    :add => TargetSpec(:add, 2, :must_pass, (rng, n) -> (_sample_centered(rng, n), _sample_centered(rng, n)), xy -> xy[1] .+ xy[2]),
-    :mul => TargetSpec(:mul, 2, :must_pass, (rng, n) -> (_sample_centered(rng, n), _sample_centered(rng, n)), xy -> xy[1] .* xy[2]),
-    :div => TargetSpec(:div, 2, :challenge, (rng, n) -> (_sample_centered(rng, n), _sample_positive(rng, n)), xy -> xy[1] ./ xy[2]),
-    :square => TargetSpec(:square, 1, :challenge, (rng, n) -> _sample_centered(rng, n), xs -> xs .^ 2),
-    :sqrt => TargetSpec(:sqrt, 1, :challenge, (rng, n) -> _sample_positive(rng, n), xs -> sqrt.(xs)),
-    :sin => TargetSpec(:sin, 1, :challenge, (rng, n) -> _sample_centered(rng, n), xs -> sin.(xs)),
-    :cos => TargetSpec(:cos, 1, :challenge, (rng, n) -> _sample_centered(rng, n), xs -> cos.(xs)),
-    :tan => TargetSpec(:tan, 1, :challenge, (rng, n) -> ComplexF64.(range(-0.5, 0.5; length=n)), xs -> tan.(xs)),
-    :logxy => TargetSpec(:logxy, 2, :challenge, (rng, n) -> (_sample_positive(rng, n) .+ 1, _sample_positive(rng, n)), xy -> log.(xy[2]) ./ log.(xy[1])),
+function _sample_pair(rng, n)
+    return (_sample_centered(rng, n), _sample_positive(rng, n))
+end
+
+function _paper_target(name, tier, depth, tree, sampler, arity)
+    return TargetSpec(name, arity, tier, depth, tree, sampler)
+end
+
+const PAPER_TARGETS = Dict{Symbol,TargetSpec}(
+    :depth2_exp => _paper_target(
+        :depth2_exp,
+        :must_pass,
+        2,
+        RecoveredTree(Dict(1 => (:x, :const1), 2 => (:const1, :const1), 3 => (:const1, :const1))),
+        (rng, n) -> _sample_centered(rng, n),
+        1,
+    ),
+    :depth2_double_exp => _paper_target(
+        :depth2_double_exp,
+        :must_pass,
+        2,
+        RecoveredTree(Dict(1 => (:node_2, :const1), 2 => (:x, :const1), 3 => (:const1, :const1))),
+        (rng, n) -> _sample_centered(rng, n),
+        1,
+    ),
+    :depth3_log => _paper_target(
+        :depth3_log,
+        :must_pass,
+        3,
+        RecoveredTree(Dict(
+            1 => (:const1, :node_2),
+            2 => (:node_4, :const1),
+            3 => (:const1, :const1),
+            4 => (:const1, :x),
+            5 => (:const1, :const1),
+            6 => (:const1, :const1),
+            7 => (:const1, :const1),
+        )),
+        (rng, n) -> _sample_positive(rng, n),
+        1,
+    ),
+    :depth4_nested => _paper_target(
+        :depth4_nested,
+        :challenge,
+        4,
+        RecoveredTree(Dict(
+            1 => (:node_2, :node_3),
+            2 => (:x, :const1),
+            3 => (:const1, :node_6),
+            4 => (:const1, :const1),
+            5 => (:const1, :const1),
+            6 => (:node_12, :y),
+            7 => (:const1, :const1),
+            8 => (:const1, :const1),
+            9 => (:const1, :const1),
+            10 => (:const1, :const1),
+            11 => (:const1, :const1),
+            12 => (:x, :const1),
+            13 => (:const1, :const1),
+            14 => (:const1, :const1),
+            15 => (:const1, :const1),
+        )),
+        (rng, n) -> _sample_pair(rng, n),
+        2,
+    ),
 )
+
+const TARGETS = let targets = copy(PAPER_TARGETS)
+    merge!(
+        targets,
+        Dict(
+            :ln => PAPER_TARGETS[:depth3_log],
+            :exp => PAPER_TARGETS[:depth2_exp],
+            :mul => PAPER_TARGETS[:depth4_nested],
+        ),
+    )
+    targets
+end
 
 """
     get_target(name)
 
-登録済みターゲット関数を取得します。
+登録済みターゲットを取得します。
 """
-function get_target(name::Symbol)
-    return TARGETS[name]
-end
+get_target(name::Symbol) = TARGETS[name]
 
 """
     sample_domain(target, n; rng_seed=1)
@@ -59,6 +122,9 @@ end
 """
     evaluate_target(target, xs)
 
-ターゲット関数を入力 `xs` 上で評価します。
+target tree を independent input 上で評価します。
 """
-evaluate_target(target::TargetSpec, xs) = target.evaluator(xs)
+function evaluate_target(target::TargetSpec, xs)
+    master = build_master_tree(depth=target.depth, variables=target.arity == 1 ? (:x,) : (:x, :y))
+    return evaluate_recovered(target.tree, master, xs)
+end
