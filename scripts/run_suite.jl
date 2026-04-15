@@ -32,6 +32,8 @@ function variant_args(base_name, variant)
         "target_noise_std" => "--target-noise-std",
         "learning_rate" => "--learning-rate",
         "complexity_weight" => "--complexity-weight",
+        "margin_penalty_weight" => "--margin-penalty-weight",
+        "margin_target" => "--margin-target",
         "hardening_steps" => "--hardening-steps",
         "hardening_start" => "--hardening-start",
         "hardening_weight" => "--hardening-weight",

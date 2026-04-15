@@ -45,6 +45,46 @@ end
     @test length(result.metrics[:hardening_loss]) == cfg.hardening_steps
 end
 
+@testset "margin regularization increases logit separation" begin
+    base_cfg = TrainConfig(
+        depth=2,
+        target=:ln,
+        batch_size=32,
+        steps=20,
+        learning_rate=1e-2,
+    )
+    regularized_cfg = TrainConfig(
+        depth=2,
+        target=:ln,
+        batch_size=32,
+        steps=20,
+        learning_rate=1e-2,
+        margin_penalty_weight=2.0,
+        margin_target=1.0,
+    )
+
+    baseline = run_training(base_cfg; rng=StableRNG(1))
+    regularized = run_training(regularized_cfg; rng=StableRNG(1))
+
+    @test !isempty(regularized.metrics[:margin_penalty_loss])
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    @test EMLRegression._margin_penalty(layer, regularized.params; target_margin=1.0) <
+          EMLRegression._margin_penalty(layer, baseline.params; target_margin=1.0)
+end
+
+@testset "active-node margin penalty ignores inactive ambiguous nodes" begin
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    ps = (
+        nodes=(
+            (left_logits=[8.0, -8.0, -8.0], right_logits=[8.0, -8.0, -8.0]),
+            (left_logits=[0.1, 0.0], right_logits=[0.1, 0.0]),
+            (left_logits=[0.1, 0.0], right_logits=[0.1, 0.0]),
+        ),
+    )
+
+    @test EMLRegression._margin_penalty(layer, ps; target_margin=1.0) == 0.0
+end
+
 @testset "complexity penalty prefers simpler selections" begin
     layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
     simple = (

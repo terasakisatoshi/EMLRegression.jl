@@ -19,3 +19,9 @@ init_strategy = "zero_bias_to_inputs"
 [[variants]]
 name = "depth5_blind_bias"
 init_strategy = "depth5_blind_bias"
+
+[[variants]]
+name = "depth5_blind_margin"
+init_strategy = "depth5_blind_bias"
+margin_penalty_weight = 2.0
+margin_target = 1.0

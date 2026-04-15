@@ -12,6 +12,8 @@ Base.@kwdef struct TrainConfig
     target_noise_std::Float64 = 0.0
     learning_rate::Float64 = 1e-2
     complexity_weight::Float64 = 0.0
+    margin_penalty_weight::Float64 = 0.0
+    margin_target::Float64 = 1.0
     hardening_steps::Int = 0
     hardening_start::Int = typemax(Int)
     hardening_weight::Float64 = 0.1

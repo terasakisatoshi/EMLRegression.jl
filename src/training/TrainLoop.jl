@@ -28,6 +28,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
 
     train_loss = Float64[]
     hardening_loss = Float64[]
+    margin_penalty_loss = Float64[]
     logit_margin = Float64[]
     max_output_abs = Float64[]
     max_node_abs = Float64[]
@@ -61,7 +62,8 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
             mse_loss = _mse(preds, ys)
             hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
             complexity_term = cfg.complexity_weight * _complexity_penalty(layer, ps_current; temperature=temperature)
-            mse_loss + hardening_term + complexity_term
+            margin_term = cfg.margin_penalty_weight * _margin_penalty(layer, ps_current; target_margin=cfg.margin_target)
+            mse_loss + hardening_term + complexity_term + margin_term
         end
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
         preds, st = Lux.apply(layer, xs, ps, st)
@@ -77,11 +79,15 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         if hardening_active
             push!(hardening_loss, cfg.hardening_weight * _hardening_penalty(ps; temperature=temperature))
         end
+        if cfg.margin_penalty_weight > 0.0
+            push!(margin_penalty_loss, cfg.margin_penalty_weight * _margin_penalty(layer, ps; target_margin=cfg.margin_target))
+        end
     end
 
     metrics = Dict(
         :train_loss => train_loss,
         :hardening_loss => hardening_loss,
+        :margin_penalty_loss => margin_penalty_loss,
         :logit_margin => logit_margin,
         :max_output_abs => max_output_abs,
         :max_node_abs => max_node_abs,
@@ -179,6 +185,25 @@ function _hardening_penalty(ps; temperature::Float64=1.0)
         for logits in (node.left_logits, node.right_logits)
     )
     return sum(penalties)
+end
+
+function _margin_penalty(layer::EMLTreeLayer, ps; target_margin::Float64=1.0)
+    bottleneck_margin = _active_min_logit_margin(layer, ps)
+    !isfinite(bottleneck_margin) && return 0.0
+    return max(target_margin - bottleneck_margin, 0.0)
+end
+
+function _active_min_logit_margin(layer::EMLTreeLayer, ps)
+    active_node_ids = ChainRulesCore.ignore_derivatives() do
+        _active_node_ids(snap_model(layer, ps))
+    end
+    min_margin = Inf
+    for node in layer.tree.nodes
+        node.id in active_node_ids || continue
+        min_margin = min(min_margin, _logit_margin(ps.nodes[node.id].left_logits))
+        min_margin = min(min_margin, _logit_margin(ps.nodes[node.id].right_logits))
+    end
+    return min_margin
 end
 
 function _complexity_penalty(layer::EMLTreeLayer, ps; temperature::Float64=1.0)

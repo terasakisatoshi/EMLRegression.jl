@@ -87,6 +87,8 @@ end
     cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth5_sweep.toml"), String)
     @test occursin("name = \"depth5_blind_bias\"", cfg_text)
     @test occursin("init_strategy = \"depth5_blind_bias\"", cfg_text)
+    @test occursin("name = \"depth5_blind_margin\"", cfg_text)
+    @test occursin("margin_penalty_weight = 2.0", cfg_text)
 end
 
 @testset "challenge depth6 sweep is configured as a negative control" begin
