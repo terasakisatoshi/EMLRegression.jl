@@ -21,6 +21,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     hardening_loss = Float64[]
     logit_margin = Float64[]
     max_output_abs = Float64[]
+    max_node_abs = Float64[]
     failure_reason = no_failure
 
     total_steps = cfg.steps + cfg.hardening_steps
@@ -33,6 +34,14 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         if !_report_is_finite(batch_report)
             failure_reason = _failure_reason(batch_report)
             push!(max_output_abs, batch_report.max_abs)
+            push!(max_node_abs, batch_report.max_abs)
+            break
+        end
+        node_report = _inspect_node_outputs(layer, xs, ps)
+        push!(max_node_abs, node_report.max_abs)
+        if !_report_is_finite(node_report)
+            failure_reason = _failure_reason(node_report)
+            push!(max_output_abs, node_report.max_abs)
             break
         end
         hardening_active = step >= hardening_start
@@ -66,6 +75,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         :hardening_loss => hardening_loss,
         :logit_margin => logit_margin,
         :max_output_abs => max_output_abs,
+        :max_node_abs => max_node_abs,
     )
     return TrainingResult(cfg, metrics, failure_reason, ps, st)
 end

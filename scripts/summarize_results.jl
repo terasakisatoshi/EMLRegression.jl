@@ -23,6 +23,8 @@ for path in paths
         :validation_loss => Float64(get(row, :validation_loss, Inf)),
         :numerical_match => Bool(get(row, :numerical_match, false)),
         :training_failure_reason => String(get(row, :training_failure_reason, "no_failure")),
+        :max_output_abs => Float64(get(row, :max_output_abs, Inf)),
+        :max_node_abs => Float64(get(row, :max_node_abs, Inf)),
         :formula => String(row[:formula]),
     ))
 end
@@ -40,6 +42,8 @@ df = isempty(rows) ? DataFrame(
     validation_loss=Float64[],
     numerical_match=Bool[],
     training_failure_reason=String[],
+    max_output_abs=Float64[],
+    max_node_abs=Float64[],
     formula=String[],
 ) : DataFrame(rows)
 if !isempty(df)
@@ -54,6 +58,8 @@ if !isempty(df)
         :training_failure_reason => (x -> _mean(Float64.(x .!= "no_failure"))) => :training_failure_rate,
         :validation_loss => _mean => :mean_validation_loss,
         :ambiguous_nodes => _mean => :mean_ambiguous_nodes,
+        :max_output_abs => _mean => :mean_max_output_abs,
+        :max_node_abs => _mean => :mean_max_node_abs,
         nrow => :runs,
     )
 else
@@ -71,6 +77,8 @@ else
         training_failure_rate=Float64[],
         mean_validation_loss=Float64[],
         mean_ambiguous_nodes=Float64[],
+        mean_max_output_abs=Float64[],
+        mean_max_node_abs=Float64[],
         runs=Int[],
     )
 end

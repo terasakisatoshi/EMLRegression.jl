@@ -46,6 +46,8 @@ end
 
 function write_raw_result(config_meta, cfg, seed, outcome)
     mkpath("results/raw")
+    max_output_abs = isempty(outcome.training.metrics[:max_output_abs]) ? Inf : maximum(outcome.training.metrics[:max_output_abs])
+    max_node_abs = isempty(outcome.training.metrics[:max_node_abs]) ? Inf : maximum(outcome.training.metrics[:max_node_abs])
     result = Dict(
         "config_name" => config_meta["name"],
         "depth" => cfg.depth,
@@ -60,6 +62,8 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "validation_loss" => outcome.recovery.validation_loss,
         "numerical_match" => outcome.recovery.numerical_match,
         "training_failure_reason" => String(outcome.recovery.training_failure_reason),
+        "max_output_abs" => max_output_abs,
+        "max_node_abs" => max_node_abs,
         "formula" => formula_string(outcome.recovered_tree, outcome.master_tree),
         "train_loss" => outcome.training.metrics[:train_loss],
         "hardening_loss" => outcome.training.metrics[:hardening_loss],

@@ -69,10 +69,10 @@ end
         mkpath(raw_dir)
 
         write(joinpath(raw_dir, "run1.json"), """
-        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":1,"success":true,"reason":"recovered","snap_status":"ok","structure_match":true,"ambiguous_nodes":0,"validation_loss":0.0,"numerical_match":true,"training_failure_reason":"no_failure","formula":"eml(x, 1)","train_loss":0.0,"hardening_loss":0.0}
+        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":1,"success":true,"reason":"recovered","snap_status":"ok","structure_match":true,"ambiguous_nodes":0,"validation_loss":0.0,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":1.0,"max_node_abs":2.0,"formula":"eml(x, 1)","train_loss":0.0,"hardening_loss":0.0}
         """)
         write(joinpath(raw_dir, "run2.json"), """
-        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":2,"success":false,"reason":"snap_failed","snap_status":"ambiguous","structure_match":false,"ambiguous_nodes":1,"validation_loss":0.5,"numerical_match":true,"training_failure_reason":"no_failure","formula":"1","train_loss":0.1,"hardening_loss":0.2}
+        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":2,"success":false,"reason":"snap_failed","snap_status":"ambiguous","structure_match":false,"ambiguous_nodes":1,"validation_loss":0.5,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":3.0,"max_node_abs":4.0,"formula":"1","train_loss":0.1,"hardening_loss":0.2}
         """)
 
         run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(summary_script)`; dir=dir))
@@ -84,6 +84,8 @@ end
         @test "ambiguous_rate" in names(summary)
         @test "structure_match_rate" in names(summary)
         @test "training_failure_rate" in names(summary)
+        @test "mean_max_output_abs" in names(summary)
+        @test "mean_max_node_abs" in names(summary)
         @test "mean_validation_loss" in names(summary)
         @test summary[1, :success_rate] ≈ 0.5
         @test summary[1, :numerical_match_rate] ≈ 1.0
@@ -91,6 +93,8 @@ end
         @test summary[1, :ambiguous_rate] ≈ 0.5
         @test summary[1, :structure_match_rate] ≈ 0.5
         @test summary[1, :training_failure_rate] ≈ 0.0
+        @test summary[1, :mean_max_output_abs] ≈ 2.0
+        @test summary[1, :mean_max_node_abs] ≈ 3.0
         @test summary[1, :mean_validation_loss] ≈ 0.25
     end
 end

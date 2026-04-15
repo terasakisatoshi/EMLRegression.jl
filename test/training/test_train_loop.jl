@@ -8,6 +8,7 @@ using EMLRegression
     result = run_training(cfg; rng=StableRNG(1))
     @test haskey(result.metrics, :train_loss)
     @test haskey(result.metrics, :logit_margin)
+    @test haskey(result.metrics, :max_node_abs)
     @test length(result.metrics[:train_loss]) == 3
     @test any(!iszero, result.metrics[:train_loss])
     @test result.params.nodes[1].left_logits != zeros(length(result.params.nodes[1].left_logits))
@@ -96,7 +97,7 @@ end
     @test all(<=((0.25 + 1e-9)), result.metrics[:max_output_abs])
 end
 
-@testset "training loop reports nonfinite failure_reason on unstable batches" begin
+@testset "training loop keeps exp-heavy batches finite after exp clamping" begin
     overflow_target = TargetSpec(
         :overflow_probe,
         1,
@@ -115,7 +116,8 @@ end
             learning_rate=1e-2,
         )
         result = run_training(cfg; rng=StableRNG(1))
-        @test result.failure_reason == EMLRegression.inf_detected
+        @test result.failure_reason == EMLRegression.no_failure
+        @test all(isfinite, result.metrics[:max_output_abs])
     finally
         delete!(EMLRegression.TARGETS, :overflow_probe)
     end
