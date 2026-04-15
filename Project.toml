@@ -1,9 +1,17 @@
 name = "EMLRegression"
 uuid = "366154f3-20ce-4abb-a660-2d583e8bae5e"
-authors = ["OpenAI Codex"]
 version = "0.1.0"
+authors = ["OpenAI Codex"]
 
 [deps]
+ComponentArrays = "b0b7db55-cfe3-40fc-9ded-d10e2dbeff66"
+Lux = "b2108857-7c20-44ae-9111-449ecde12c47"
+StableRNGs = "860ef19b-820b-49d6-a774-d7a799459cd3"
+
+[compat]
+ComponentArrays = "0.15.36"
+Lux = "1.31.4"
+StableRNGs = "1.0.4"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"

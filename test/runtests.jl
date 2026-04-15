@@ -9,3 +9,7 @@ include("test_project_load.jl")
 if should_run("trees")
     include("trees/test_master_tree.jl")
 end
+
+if should_run("models")
+    include("models/test_eml_layer.jl")
+end
