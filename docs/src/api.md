@@ -49,6 +49,8 @@ evaluate_target
 RecoveredTree
 snap_logits
 snap_model
+search_recovered_tree
+refine_recovered_tree
 evaluate_recovered
 formula_string
 ```

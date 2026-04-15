@@ -133,7 +133,9 @@
 - raw JSON には `snap_status`, `structure_match`, `ambiguous_nodes`, `validation_loss` も保存されます。
 - summary CSV には `success_rate`, `ambiguous_rate`, `structure_match_rate`, `mean_validation_loss` が出ます。
 - 直近の 1 スイートだけを集計したい場合は、事前に `results/raw/` を退避するか整理してから実行してください。
-- 現在の paper-aligned baseline では `must_pass_depth2` の 2 target がともに `5/5` で、`must_pass_depth3` と `challenge_depth4` はまだ `0` です。詳細は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
+- baseline だけを見ると `must_pass_depth2` は `5/5`、`must_pass_depth3` は数値一致 `3/3` だが構造一致 `0/3`、`challenge_depth4` は `0/2` です。
+- tuned sweep では `must_pass_depth3_sweep-cooler_hardening` が strict recovery、`challenge_depth4_sweep-longer_cool` も strict recovery に到達しています。
+- basin sweep では `challenge_depth4_basin_sweep` の `σ=0.05`, `0.10`, `0.25` がいずれも `8/8` です。
 
 ## ディレクトリ構成
 
