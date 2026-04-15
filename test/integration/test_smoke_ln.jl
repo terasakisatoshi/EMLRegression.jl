@@ -125,7 +125,7 @@ end
         @test length(paths) == 2
 
         rows = JSON3.read.(read.(paths, String))
-        config_names = sort(String(row[:config_name]) for row in rows)
+        config_names = sort([String(row[:config_name]) for row in rows])
         @test config_names == ["depth2_sweep-lr010", "depth2_sweep-lr020"]
     end
 end
