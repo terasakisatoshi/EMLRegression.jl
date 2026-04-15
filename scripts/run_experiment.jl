@@ -20,7 +20,12 @@ function load_cfg(path, target_name)
         target=Symbol(target_name),
         batch_size=cfg["batch_size"],
         steps=cfg["steps"],
+        learning_rate=get(cfg, "learning_rate", 1.0e-2),
         hardening_steps=get(cfg, "hardening_steps", 0),
+        hardening_start=get(cfg, "hardening_start", typemax(Int)),
+        hardening_weight=get(cfg, "hardening_weight", 0.1),
+        temperature=get(cfg, "temperature", 1.0),
+        margin_threshold=get(cfg, "margin_threshold", 0.05),
     ), cfg
 end
 
@@ -33,7 +38,8 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "seed" => seed,
         "success" => outcome.recovery.success,
         "reason" => String(outcome.recovery.reason),
-        "formula" => formula_string(outcome.recovered_tree),
+        "snap_status" => String(outcome.recovery.snap_status),
+        "formula" => formula_string(outcome.recovered_tree, outcome.master_tree),
         "train_loss" => outcome.training.metrics[:train_loss],
         "hardening_loss" => outcome.training.metrics[:hardening_loss],
     )

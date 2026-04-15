@@ -25,9 +25,26 @@ function snap_model(layer::EMLTreeLayer, ps; margin_threshold=0.0)
     return RecoveredTree(choices)
 end
 
+function snap_status(layer::EMLTreeLayer, ps; margin_threshold=0.0)
+    for node in layer.tree.nodes
+        if _choice_margin(ps.nodes[node.id].left_logits) < margin_threshold
+            return :ambiguous
+        end
+        if _choice_margin(ps.nodes[node.id].right_logits) < margin_threshold
+            return :ambiguous
+        end
+    end
+    return :ok
+end
+
 function _snap_choice(candidates, logits; margin_threshold=0.0)
     max_index = argmax(logits)
     return candidates[max_index]
+end
+
+function _choice_margin(logits)
+    sorted = sort(collect(logits); rev=true)
+    return length(sorted) < 2 ? Inf : sorted[1] - sorted[2]
 end
 
 """

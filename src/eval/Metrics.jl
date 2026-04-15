@@ -6,6 +6,7 @@ blind recovery 判定の結果です。
 struct RecoveryVerdict
     success::Bool
     reason::Symbol
+    snap_status::Symbol
 end
 
 """
@@ -16,7 +17,7 @@ end
 function recovery_verdict(; train_loss, validation_loss, snap_status, numerical_match)
     success = snap_status == :ok && numerical_match
     reason = success ? :recovered : snap_status != :ok ? :snap_failed : :mismatch
-    return RecoveryVerdict(success, reason)
+    return RecoveryVerdict(success, reason, snap_status)
 end
 
 """

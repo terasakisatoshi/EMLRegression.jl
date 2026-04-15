@@ -9,7 +9,7 @@
 - EML 木の定義
 - `Lux.jl` ベースの学習可能モデル化
 - hardening を含む学習ループ
-- learned parameters の snapping
+- node-wise learned parameters の snapping
 - snapped tree の評価と blind recovery 集計
 - 単発実験とスイート実験の CLI 化
 
@@ -25,7 +25,8 @@
 - 複素数値の安定性チェック
 - must-pass / challenge target の registry
 - 学習ループの骨格
-- snapping と recovered formula の最小出力
+- recursive EML tree の最小実装
+- node-wise snapping と recovered formula の出力
 - recovery 判定と smoke experiment
 - 実験設定ファイルと CLI
 - raw JSON と summary CSV の生成
@@ -129,6 +130,7 @@
 - `results/raw/*.json` は `config-target-seed` ごとに同じファイル名を使います。
 - そのため、同じ条件で再実行すると対応する raw JSON は上書きされます。
 - `scripts/summarize_results.jl` は、その時点で `results/raw/` に存在する JSON をすべて集計します。
+- raw JSON には recovered formula に加えて `snap_status` も保存されます。
 - 直近の 1 スイートだけを集計したい場合は、事前に `results/raw/` を退避するか整理してから実行してください。
 - 現在のベースラインでは `success_count = 0` が並ぶのが既知の状態です。解釈は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
 
