@@ -8,9 +8,24 @@ function build_master_tree(; depth::Integer, variables)
 
     vars = Symbol[variables...]
     terminals = vcat(Symbol[:const1], vars)
-    candidate_symbols = copy(terminals)
     node_count = 2^depth - 1
-    nodes = [NodeChoiceSpace(copy(candidate_symbols), copy(candidate_symbols)) for _ in 1:node_count]
+    nodes = TreeNodeSpec[]
 
-    return MasterTree(depth, vars, terminals, nodes)
+    for node_id in 1:node_count
+        left_child = 2 * node_id <= node_count ? 2 * node_id : nothing
+        right_child = 2 * node_id + 1 <= node_count ? 2 * node_id + 1 : nothing
+
+        left_candidates = copy(terminals)
+        right_candidates = copy(terminals)
+        if !isnothing(left_child)
+            push!(left_candidates, Symbol("node_$(left_child)"))
+        end
+        if !isnothing(right_child)
+            push!(right_candidates, Symbol("node_$(right_child)"))
+        end
+
+        push!(nodes, TreeNodeSpec(node_id, left_candidates, right_candidates, left_child, right_child))
+    end
+
+    return MasterTree(depth, vars, 1, terminals, nodes)
 end

@@ -1,14 +1,4 @@
 """
-    RecoveredTree
-
-snapping 後の離散的な終端選択を表します。
-"""
-struct RecoveredTree
-    terminals::Vector{Symbol}
-    weights::Vector{Float64}
-end
-
-"""
     snap_logits(logits; margin_threshold=0.0)
 
 最大ロジットを 1、他を 0 にする単純な snapping です。
