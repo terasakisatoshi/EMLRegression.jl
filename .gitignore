@@ -1,0 +1,8 @@
+/Manifest.toml
+/results/raw/*
+/results/summaries/*
+/results/figures/*
+!/results/raw/.gitkeep
+!/results/summaries/.gitkeep
+!/results/figures/.gitkeep
+/tmp/
