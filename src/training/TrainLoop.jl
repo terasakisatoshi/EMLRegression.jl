@@ -19,22 +19,27 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     hardening_loss = Float64[]
     logit_margin = Float64[]
 
-    for step in 1:cfg.steps
+    total_steps = cfg.steps + cfg.hardening_steps
+
+    for step in 1:total_steps
         xs = sample_domain(target, cfg.batch_size; rng_seed=step)
         ys = evaluate_target(target, xs)
+        hardening_active = step >= cfg.hardening_start
+        temperature = _hardening_temperature(cfg, step, hardening_active)
         grads = _finite_difference_gradient(ps) do ps_current
             preds, _ = Lux.apply(layer, xs, ps_current, st)
-            _mse(preds, ys)
+            mse_loss = _mse(preds, ys)
+            hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
+            mse_loss + hardening_term
         end
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
         preds, st = Lux.apply(layer, xs, ps, st)
         loss = _mse(preds, ys)
         push!(train_loss, loss)
         push!(logit_margin, _mean_logit_margin(ps))
-    end
-
-    for step in 1:cfg.hardening_steps
-        push!(hardening_loss, cfg.hardening_weight)
+        if hardening_active
+            push!(hardening_loss, cfg.hardening_weight * _hardening_penalty(ps; temperature=temperature))
+        end
     end
 
     metrics = Dict(
@@ -94,4 +99,28 @@ end
 function _logit_margin(logits)
     sorted = sort(collect(logits); rev=true)
     return length(sorted) < 2 ? sorted[1] : sorted[1] - sorted[2]
+end
+
+function _hardening_penalty(ps; temperature::Float64=1.0)
+    penalties = Float64[]
+    for node in ps.nodes
+        push!(penalties, 1.0 - maximum(_softmax_probabilities(node.left_logits; temperature=temperature)))
+        push!(penalties, 1.0 - maximum(_softmax_probabilities(node.right_logits; temperature=temperature)))
+    end
+    return sum(penalties)
+end
+
+function _softmax_probabilities(logits; temperature::Float64=1.0)
+    scaled = logits ./ max(temperature, 1.0e-6)
+    shifted = scaled .- maximum(scaled)
+    weights = exp.(shifted)
+    return weights ./ sum(weights)
+end
+
+function _hardening_temperature(cfg::TrainConfig, step::Int, hardening_active::Bool)
+    if !hardening_active
+        return cfg.temperature
+    end
+    hardening_step = max(step - cfg.hardening_start, 0)
+    return max(cfg.temperature * (0.5 ^ hardening_step), 0.1)
 end
