@@ -20,14 +20,14 @@ EMLTreeLayer(tree; init_strategy::Symbol=:small_gaussian) = EMLTreeLayer(tree, i
 function Lux.initialparameters(rng::LehmerRNG, layer::EMLTreeLayer)
     node_params = Tuple(
         (
-            left_logits=_initial_logits(rng, node.left_candidates, layer.init_strategy, node.left_child),
-            right_logits=_initial_logits(rng, node.right_candidates, layer.init_strategy, node.right_child),
+            left_logits=_initial_logits(rng, node.left_candidates, layer.init_strategy, node.left_child, node.id, layer.tree.depth),
+            right_logits=_initial_logits(rng, node.right_candidates, layer.init_strategy, node.right_child, node.id, layer.tree.depth),
         ) for node in layer.tree.nodes
     )
     return (; nodes=node_params)
 end
 
-function _initial_logits(rng::LehmerRNG, candidates, strategy::Symbol, child_id)
+function _initial_logits(rng::LehmerRNG, candidates, strategy::Symbol, child_id, node_id::Int, tree_depth::Int)
     logits = 0.01 .* randn(rng, Float64, length(candidates))
 
     if strategy === :small_gaussian
@@ -42,10 +42,33 @@ function _initial_logits(rng::LehmerRNG, candidates, strategy::Symbol, child_id)
         preferred = rand(rng, eachindex(candidates))
         logits[preferred] += 1.5
         return logits .+ _terminal_bias(candidates, child_id; terminal_boost=0.25, child_penalty=0.5)
+    elseif strategy === :depth5_blind_bias
+        return logits .+ _depth5_blind_bias(candidates, child_id, node_id, tree_depth)
     else
         throw(ArgumentError("unsupported init strategy: $(strategy)"))
     end
 end
+
+function _depth5_blind_bias(candidates, child_id, node_id::Int, tree_depth::Int)
+    isnothing(child_id) && return zeros(Float64, length(candidates))
+
+    node_depth = _node_depth(node_id)
+    remaining_levels = max(tree_depth - node_depth, 0)
+    scale = tree_depth <= 1 ? 0.0 : remaining_levels / (tree_depth - 1)
+    child_boost = 0.65 + 0.65 * scale
+    terminal_boost = 0.55 + 0.1 * (1.0 - scale)
+
+    bias = fill(terminal_boost, length(candidates))
+    child_symbol = Symbol("node_$(child_id)")
+    for (idx, symbol) in pairs(candidates)
+        if symbol === child_symbol
+            bias[idx] = child_boost
+        end
+    end
+    return bias
+end
+
+_node_depth(node_id::Int) = floor(Int, log2(node_id)) + 1
 
 function _terminal_bias(candidates, child_id; terminal_boost::Float64, child_penalty::Float64)
     bias = zeros(Float64, length(candidates))

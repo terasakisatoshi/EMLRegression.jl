@@ -15,3 +15,7 @@ name = "small_gaussian"
 [[variants]]
 name = "zero_bias"
 init_strategy = "zero_bias_to_inputs"
+
+[[variants]]
+name = "depth5_blind_bias"
+init_strategy = "depth5_blind_bias"

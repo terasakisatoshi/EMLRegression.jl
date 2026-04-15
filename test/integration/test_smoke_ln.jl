@@ -83,6 +83,12 @@ end
     @test occursin("target_noise_std = 0.25", cfg_text)
 end
 
+@testset "challenge depth5 sweep includes a depth-aware blind initialization" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth5_sweep.toml"), String)
+    @test occursin("name = \"depth5_blind_bias\"", cfg_text)
+    @test occursin("init_strategy = \"depth5_blind_bias\"", cfg_text)
+end
+
 @testset "challenge depth6 sweep is configured as a negative control" begin
     cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth6_sweep.toml"), String)
     @test occursin("targets = [\"depth6_inverse_logy\"]", cfg_text)

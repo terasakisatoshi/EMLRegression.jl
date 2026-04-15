@@ -138,6 +138,18 @@ end
           maximum(gaussian.nodes[1].left_logits) - minimum(gaussian.nodes[1].left_logits)
 end
 
+@testset "depth5 blind bias favors subtrees near the root with decaying strength" begin
+    tree = build_master_tree(depth=5, variables=(:x, :y))
+    blind, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:depth5_blind_bias))
+
+    root_margin = blind.nodes[1].left_logits[end] - maximum(blind.nodes[1].left_logits[1:end-1])
+    deep_margin = blind.nodes[12].left_logits[end] - maximum(blind.nodes[12].left_logits[1:end-1])
+
+    @test root_margin > 0.0
+    @test deep_margin > 0.0
+    @test root_margin > deep_margin
+end
+
 @testset "target-tree-noise initialization snaps to the source tree at zero noise" begin
     target = get_target(:depth4_nested)
     variables = target.arity == 1 ? (:x,) : (:x, :y)
