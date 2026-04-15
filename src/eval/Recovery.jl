@@ -3,7 +3,8 @@ using StableRNGs: StableRNG
 function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     training = run_training(cfg; rng=rng)
     target = get_target(cfg.target)
-    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=(:x,)))
+    variables = target.arity == 1 ? (:x,) : (:x, :y)
+    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables))
     recovered = snap_model(layer, training.params)
 
     xs = sample_domain(target, cfg.batch_size; rng_seed=cfg.steps + 1)

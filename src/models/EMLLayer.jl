@@ -14,18 +14,27 @@ end
 Lux.initialstates(::LehmerRNG, ::EMLTreeLayer) = NamedTuple()
 
 function (layer::EMLTreeLayer)(x, ps, st)
-    x_complex = ComplexF64.(x)
+    x_complex = _to_complex_input(x)
     weighted = _weighted_terminal_choice(layer.tree.terminals, x_complex, ps.logits)
-    ones_input = fill(1.0 + 0.0im, length(x_complex))
+    sample_vector = _sample_vector(x_complex)
+    ones_input = fill(1.0 + 0.0im, length(sample_vector))
     return eml(weighted, ones_input), st
 end
+
+_to_complex_input(x::Tuple) = map(v -> ComplexF64.(v), x)
+_to_complex_input(x) = ComplexF64.(x)
+
+_sample_vector(x::Tuple) = x[1]
+_sample_vector(x) = x
 
 function _weighted_terminal_choice(terminals, x, logits)
     values = map(terminals) do symbol
         if symbol === :const1
-            fill(1.0 + 0.0im, length(x))
+            fill(1.0 + 0.0im, length(_sample_vector(x)))
         elseif symbol === :x
-            x
+            x isa Tuple ? x[1] : x
+        elseif symbol === :y
+            x isa Tuple ? x[2] : throw(ArgumentError("terminal y requires binary input"))
         else
             throw(ArgumentError("unsupported terminal $(symbol)"))
         end

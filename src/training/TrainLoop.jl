@@ -3,7 +3,8 @@ using Lux
 
 function run_training(cfg::TrainConfig; rng=StableRNG(1))
     target = get_target(cfg.target)
-    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=(:x,)))
+    variables = target.arity == 1 ? (:x,) : (:x, :y)
+    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables))
     ps, st = Lux.setup(rng, layer)
 
     train_loss = Float64[]

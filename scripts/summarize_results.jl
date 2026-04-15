@@ -6,15 +6,15 @@ mkpath("results/summaries")
 paths = filter(p -> endswith(p, ".json"), readdir("results/raw"; join=true))
 rows = Dict{Symbol,Any}[]
 for path in paths
-    row = JSON3.read(read(path, String), Dict{String,Any})
+    row = JSON3.read(read(path, String))
     push!(rows, Dict(
-        :config_name => row["config_name"],
-        :depth => row["depth"],
-        :target => row["target"],
-        :seed => row["seed"],
-        :success => row["success"],
-        :reason => row["reason"],
-        :formula => row["formula"],
+        :config_name => String(row[:config_name]),
+        :depth => Int(row[:depth]),
+        :target => String(row[:target]),
+        :seed => Int(row[:seed]),
+        :success => Bool(row[:success]),
+        :reason => String(row[:reason]),
+        :formula => String(row[:formula]),
     ))
 end
 df = isempty(rows) ? DataFrame(config_name=String[], depth=Int[], target=String[], seed=Int[], success=Bool[], reason=String[], formula=String[]) : DataFrame(rows)
