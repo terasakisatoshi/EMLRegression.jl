@@ -16,6 +16,7 @@ end
 
 if should_run("training")
     include("training/test_stability.jl")
+    include("training/test_train_loop.jl")
 end
 
 if should_run("targets")

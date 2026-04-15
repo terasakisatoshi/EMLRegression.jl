@@ -4,6 +4,8 @@ include("trees/TreeTypes.jl")
 include("trees/MasterTree.jl")
 include("models/EMLLayer.jl")
 include("training/Stability.jl")
+include("training/TrainConfig.jl")
+include("training/TrainLoop.jl")
 include("targets/TargetRegistry.jl")
 
 export eml
@@ -15,6 +17,9 @@ export StabilityReport
 export inspect_complex_values
 export finite_or_flag
 export clamp_complex_magnitude
+export TrainConfig
+export TrainingResult
+export run_training
 export TargetSpec
 export get_target
 export sample_domain
