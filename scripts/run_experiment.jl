@@ -15,8 +15,12 @@ end
 
 function load_cfg(path, target_name)
     cfg = TOML.parsefile(path)
+    target = get_target(Symbol(target_name))
+    if target.depth != cfg["depth"]
+        error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
+    end
     return TrainConfig(
-        depth=cfg["depth"],
+        depth=target.depth,
         target=Symbol(target_name),
         batch_size=cfg["batch_size"],
         steps=cfg["steps"],
@@ -35,6 +39,7 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "config_name" => config_meta["name"],
         "depth" => cfg.depth,
         "target" => String(cfg.target),
+        "tier" => String(get_target(cfg.target).tier),
         "seed" => seed,
         "success" => outcome.recovery.success,
         "reason" => String(outcome.recovery.reason),
