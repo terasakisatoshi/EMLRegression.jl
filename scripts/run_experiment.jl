@@ -21,6 +21,10 @@ function _override_int(parsed, flag, fallback)
     return haskey(parsed, flag) ? parse(Int, parsed[flag]) : fallback
 end
 
+function _override_symbol(parsed, flag, fallback)
+    return haskey(parsed, flag) ? Symbol(parsed[flag]) : fallback
+end
+
 function load_cfg(path, target_name, parsed=Dict{String,String}())
     cfg = TOML.parsefile(path)
     target = get_target(Symbol(target_name))
@@ -33,6 +37,7 @@ function load_cfg(path, target_name, parsed=Dict{String,String}())
         target=Symbol(target_name),
         batch_size=_override_int(parsed, "--batch-size", cfg["batch_size"]),
         steps=_override_int(parsed, "--steps", cfg["steps"]),
+        init_strategy=_override_symbol(parsed, "--init-strategy", Symbol(get(cfg, "init_strategy", "small_gaussian"))),
         learning_rate=_override_float(parsed, "--learning-rate", get(cfg, "learning_rate", 1.0e-2)),
         complexity_weight=_override_float(parsed, "--complexity-weight", get(cfg, "complexity_weight", 0.0)),
         hardening_steps=_override_int(parsed, "--hardening-steps", get(cfg, "hardening_steps", 0)),
@@ -54,6 +59,7 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "target" => String(cfg.target),
         "tier" => String(get_target(cfg.target).tier),
         "seed" => seed,
+        "init_strategy" => String(cfg.init_strategy),
         "success" => outcome.recovery.success,
         "reason" => String(outcome.recovery.reason),
         "snap_status" => String(outcome.recovery.snap_status),

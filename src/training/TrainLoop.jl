@@ -12,7 +12,7 @@ using Zygote
 function run_training(cfg::TrainConfig; rng=StableRNG(1))
     target = get_target(cfg.target)
     variables = target.arity == 1 ? (:x,) : (:x, :y)
-    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables))
+    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables); init_strategy=cfg.init_strategy)
     ps, st = Lux.setup(rng, layer)
     opt = Optimisers.Adam(cfg.learning_rate)
     opt_state = Optimisers.setup(opt, ps)

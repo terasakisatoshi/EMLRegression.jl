@@ -122,3 +122,18 @@ end
         delete!(EMLRegression.TARGETS, :overflow_probe)
     end
 end
+
+@testset "initialization strategies bias root selections differently" begin
+    tree = build_master_tree(depth=3, variables=(:x,))
+
+    gaussian, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:small_gaussian))
+    terminal, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:zero_bias_to_inputs))
+    subtree, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:subtree_favoring))
+    margin, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:margin_biased))
+
+    @test length(gaussian.nodes) == length(tree.nodes)
+    @test terminal.nodes[1].left_logits[1] > terminal.nodes[1].left_logits[end]
+    @test subtree.nodes[1].left_logits[end] > subtree.nodes[1].left_logits[1]
+    @test maximum(margin.nodes[1].left_logits) - minimum(margin.nodes[1].left_logits) >
+          maximum(gaussian.nodes[1].left_logits) - minimum(gaussian.nodes[1].left_logits)
+end

@@ -9,18 +9,51 @@ using StableRNGs: LehmerRNG
 """
 struct EMLTreeLayer{T} <: Lux.AbstractLuxLayer
     tree::T
+    init_strategy::Symbol
 end
 
 const _EML_EXP_REAL_LIMIT = 40.0
 
+EMLTreeLayer(tree; init_strategy::Symbol=:small_gaussian) = EMLTreeLayer(tree, init_strategy)
+
 function Lux.initialparameters(rng::LehmerRNG, layer::EMLTreeLayer)
     node_params = Tuple(
         (
-            left_logits=0.01 .* randn(rng, Float64, length(node.left_candidates)),
-            right_logits=0.01 .* randn(rng, Float64, length(node.right_candidates)),
+            left_logits=_initial_logits(rng, node.left_candidates, layer.init_strategy, node.left_child),
+            right_logits=_initial_logits(rng, node.right_candidates, layer.init_strategy, node.right_child),
         ) for node in layer.tree.nodes
     )
     return (; nodes=node_params)
+end
+
+function _initial_logits(rng::LehmerRNG, candidates, strategy::Symbol, child_id)
+    logits = 0.01 .* randn(rng, Float64, length(candidates))
+
+    if strategy === :small_gaussian
+        return logits
+    elseif strategy === :zero_bias_to_inputs
+        return logits .+ _terminal_bias(candidates, child_id; terminal_boost=0.75, child_penalty=-0.75)
+    elseif strategy === :subtree_favoring
+        return logits .+ _terminal_bias(candidates, child_id; terminal_boost=-0.75, child_penalty=0.75)
+    elseif strategy === :margin_biased
+        preferred = rand(rng, eachindex(candidates))
+        logits[preferred] += 1.5
+        return logits .+ _terminal_bias(candidates, child_id; terminal_boost=0.25, child_penalty=0.5)
+    else
+        throw(ArgumentError("unsupported init strategy: $(strategy)"))
+    end
+end
+
+function _terminal_bias(candidates, child_id; terminal_boost::Float64, child_penalty::Float64)
+    bias = zeros(Float64, length(candidates))
+    for (idx, symbol) in pairs(candidates)
+        if symbol === :const1 || symbol === :x || symbol === :y
+            bias[idx] = terminal_boost
+        elseif !isnothing(child_id) && symbol == Symbol("node_$(child_id)")
+            bias[idx] = child_penalty
+        end
+    end
+    return bias
 end
 
 Lux.initialstates(::LehmerRNG, ::EMLTreeLayer) = NamedTuple()

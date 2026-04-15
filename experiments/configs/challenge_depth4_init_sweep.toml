@@ -1,0 +1,21 @@
+name = "challenge_depth4_init_sweep"
+depth = 4
+targets = ["depth4_nested"]
+seeds = [1, 2, 3, 4, 5, 6, 7, 8]
+steps = 600
+hardening_steps = 150
+batch_size = 64
+learning_rate = 0.05
+hardening_weight = 0.2
+temperature = 1.0
+
+[[variants]]
+name = "small_gaussian"
+
+[[variants]]
+name = "zero_bias"
+init_strategy = "zero_bias_to_inputs"
+
+[[variants]]
+name = "margin_biased"
+init_strategy = "margin_biased"

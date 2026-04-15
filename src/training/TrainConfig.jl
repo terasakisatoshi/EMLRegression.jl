@@ -8,6 +8,7 @@ Base.@kwdef struct TrainConfig
     target::Symbol
     batch_size::Int
     steps::Int
+    init_strategy::Symbol = :small_gaussian
     learning_rate::Float64 = 1e-2
     complexity_weight::Float64 = 0.0
     hardening_steps::Int = 0

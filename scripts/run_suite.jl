@@ -28,6 +28,7 @@ function variant_args(base_name, variant)
     flag_map = Dict(
         "batch_size" => "--batch-size",
         "steps" => "--steps",
+        "init_strategy" => "--init-strategy",
         "learning_rate" => "--learning-rate",
         "complexity_weight" => "--complexity-weight",
         "hardening_steps" => "--hardening-steps",

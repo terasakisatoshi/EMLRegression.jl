@@ -40,7 +40,7 @@ end
 end
 
 @testset "paper sweep suite configs exist for depth 3 and 4" begin
-    for suite in ("must_pass_depth3_sweep", "challenge_depth4_sweep")
+    for suite in ("must_pass_depth3_sweep", "challenge_depth4_sweep", "challenge_depth4_init_sweep")
         cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "$(suite).toml"), String)
         @test occursin("[[variants]]", cfg_text)
     end
@@ -51,6 +51,13 @@ end
     @test occursin("name = \"longer_cool\"", cfg_text)
     @test occursin("steps = 600", cfg_text)
     @test occursin("learning_rate = 0.05", cfg_text)
+end
+
+@testset "challenge depth4 init sweep covers multiple initialization strategies" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth4_init_sweep.toml"), String)
+    @test occursin("init_strategy = \"zero_bias_to_inputs\"", cfg_text)
+    @test occursin("init_strategy = \"margin_biased\"", cfg_text)
+    @test occursin("seeds = [1, 2, 3, 4, 5, 6, 7, 8]", cfg_text)
 end
 
 @testset "depth3 log target is not yet a strict recovery under complexity bias" begin
@@ -108,10 +115,10 @@ end
         mkpath(raw_dir)
 
         write(joinpath(raw_dir, "run1.json"), """
-        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":1,"success":true,"reason":"recovered","snap_status":"ok","structure_match":true,"ambiguous_nodes":0,"validation_loss":0.0,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":1.0,"max_node_abs":2.0,"formula":"eml(x, 1)","train_loss":0.0,"hardening_loss":0.0}
+        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":1,"init_strategy":"small_gaussian","success":true,"reason":"recovered","snap_status":"ok","structure_match":true,"ambiguous_nodes":0,"validation_loss":0.0,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":1.0,"max_node_abs":2.0,"formula":"eml(x, 1)","train_loss":0.0,"hardening_loss":0.0}
         """)
         write(joinpath(raw_dir, "run2.json"), """
-        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":2,"success":false,"reason":"snap_failed","snap_status":"ambiguous","structure_match":false,"ambiguous_nodes":1,"validation_loss":0.5,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":3.0,"max_node_abs":4.0,"formula":"1","train_loss":0.1,"hardening_loss":0.2}
+        {"config_name":"must_pass_depth2","depth":2,"target":"depth2_exp","tier":"must_pass","seed":2,"init_strategy":"subtree_favoring","success":false,"reason":"snap_failed","snap_status":"ambiguous","structure_match":false,"ambiguous_nodes":1,"validation_loss":0.5,"numerical_match":true,"training_failure_reason":"no_failure","max_output_abs":3.0,"max_node_abs":4.0,"formula":"1","train_loss":0.1,"hardening_loss":0.2}
         """)
 
         run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(summary_script)`; dir=dir))
@@ -126,7 +133,9 @@ end
         @test "mean_max_output_abs" in names(summary)
         @test "mean_max_node_abs" in names(summary)
         @test "mean_validation_loss" in names(summary)
+        @test "init_strategies" in names(summary)
         @test summary[1, :success_rate] ≈ 0.5
+        @test summary[1, :init_strategies] == "small_gaussian,subtree_favoring"
         @test summary[1, :numerical_match_rate] ≈ 1.0
         @test summary[1, :snap_ok_rate] ≈ 0.5
         @test summary[1, :ambiguous_rate] ≈ 0.5
@@ -159,6 +168,7 @@ end
         [[variants]]
         name = "lr020"
         learning_rate = 0.20
+        init_strategy = "subtree_favoring"
         """)
 
         run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(suite_script) --config $(config_path)`; dir=dir))
@@ -170,5 +180,7 @@ end
         rows = JSON3.read.(read.(paths, String))
         config_names = sort([String(row[:config_name]) for row in rows])
         @test config_names == ["depth2_sweep-lr010", "depth2_sweep-lr020"]
+        strategies = sort([String(row[:init_strategy]) for row in rows])
+        @test strategies == ["small_gaussian", "subtree_favoring"]
     end
 end

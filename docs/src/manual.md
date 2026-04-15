@@ -53,12 +53,15 @@ raw JSON には次のような情報が入ります。
 - `depth`
 - `target`
 - `seed`
+- `init_strategy`
 - `success`
 - `reason`
 - `snap_status`
 - `structure_match`
 - `numerical_match`
 - `training_failure_reason`
+- `max_output_abs`
+- `max_node_abs`
 - `formula`
 - `train_loss`
 - `hardening_loss`
@@ -85,6 +88,19 @@ challenge の深さ 4:
 ~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4.toml
 ```
 
+depth 3/4 の tuned sweep:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/must_pass_depth3_sweep.toml
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4_sweep.toml
+```
+
+depth 4 の初期化比較 sweep:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4_init_sweep.toml
+```
+
 ## 5. 結果を集計する
 
 summary CSV を作るには次を使います。
@@ -103,6 +119,11 @@ summary には strict recovery と数値一致を分けて見るための列も�
 - `ambiguous_rate`
 - `structure_match_rate`
 - `training_failure_rate`
+- `mean_max_output_abs`
+- `mean_max_node_abs`
+- `init_strategies`
+
+depth 4 の現状を見るなら、まず `challenge_depth4_sweep-longer_cool` を見て tuned schedule の上限を確認し、その次に `challenge_depth4_init_sweep-*` を見て初期化依存を比較してください。現状の 8-seed sweep では `challenge_depth4_init_sweep-zero_bias` が `6/8`、`challenge_depth4_init_sweep-small_gaussian` が `5/8`、`challenge_depth4_init_sweep-margin_biased` が `3/8` です。
 
 ### 重要
 
@@ -117,6 +138,7 @@ summary には strict recovery と数値一致を分けて見るための列も�
 ```
 
 現時点の実装では、ここに出る式は非常に簡単な形です。これは現状の snapping とモデル表現が最小実装だからです。
+現在は plain argmax ではなく、`top-k` snapping search と canonicalization を通した離散木が出力されます。そのため depth 3/4 では、数値一致だけでなく構造回復まで到達するケースがあります。
 
 ## 7. Documenter サイトをビルドする
 
@@ -150,7 +172,11 @@ summary には strict recovery と数値一致を分けて見るための列も�
 
 ### `success_count` がずっと 0
 
-現時点のベースラインでは既知の状態です。これは実験導線の実装が主目的で、まだ論文レベルの recovery 性能が入っていないためです。
+baseline config ではまだ起こり得ます。まず `numerical_match_rate` と `structure_match_rate` を分けて見て、必要なら tuned sweep config を使ってください。depth 4 は `challenge_depth4_sweep-longer_cool` が現時点の比較対象です。
+
+### `depth4` の成功率が seed によってぶれる
+
+今は schedule だけでなく初期化の影響も大きいです。`challenge_depth4_init_sweep.toml` を回して、`init_strategies` 列と `success_rate` を見てください。現時点では `zero_bias_to_inputs` が最良です。
 
 ### `overwriting existing raw result:` と表示される
 

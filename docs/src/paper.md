@@ -71,16 +71,16 @@ EML は `log` を含むため、実数だけで扱うと定義域制約が厳し
 
 - strict success を測れるようにはなったが、論文レベルの回復率には届いていない
   現在の `success` は snapped tree の `snap_status == :ok`、`structure_match == true`、`numerical_match == true` を要求します。ただし、この stricter metric を導入した結果、depth 3/4 はなお未達であることが明確になりました。
-- 深さ 3 は数値一致しても構造回復できていない
-  現ベースラインでは `depth3_log` が数値的には一致しますが、`structure_match_rate = 0.0` で、かつ曖昧 snap も残っています。論文の趣旨では未達です。
-- 深さ 4 の blind recovery が出ていない
-  現状の `depth4_nested` は `0/2` で、ランダム初期化からの回復は確認できていません。論文では深さ 3-4 で約 25% の blind recovery が報告されています。
+- 深さ 3 は tuned sweep で回復できるが、デフォルト設定ではまだ弱い
+  `must_pass_depth3_sweep-cooler_hardening` では strict recovery まで到達していますが、baseline 相当の設定ではまだ不安定です。論文のような systematic な成功率評価はこれからです。
+- 深さ 4 は tuned schedule と初期化で前進したが、論文レベルの systematic experiments には届いていない
+  `challenge_depth4_sweep-longer_cool` は `2/2` の strict recovery です。さらに `challenge_depth4_init_sweep` では `8` seeds の比較を行い、`zero_bias_to_inputs` が `6/8`、`small_gaussian` が `5/8`、`margin_biased` が `3/8` でした。depth 4 で blind recovery 自体は確認できていますが、論文のような大規模比較にはまだ遠いです。
 - 実験規模がかなり小さい
-  現在の同梱 suite は合計 15 runs だけで、論文の systematic experiments の規模には届いていません。論文では varied seeds and initialization strategies を含む 1000 超の runs が報告されています。
+  現在は varied seeds と initialization strategies の sweep を入れ始めましたが、規模はなお小さいです。論文では 1000 超の runs が報告されています。
 - 深さ 5/6 の検証がない
   リポジトリのターゲットと設定は深さ 2-4 までです。論文は depth 5 で 1% 未満、depth 6 で `0/448` まで評価しています。
 - basin-of-attraction の再現実験がない
-  論文は正解木の重みに Gaussian noise を加えても depth 5/6 で 100% 正解に戻ると述べていますが、その検証は現リポジトリにまだありません。
+  varied seeds / initialization strategies の sweep は入りましたが、論文が述べる「正解木近傍へ Gaussian noise を加えた初期値からの 100% recovery」はまだ未実装です。
 - 数値安定化は入ったが、論文の安定化戦略とはまだ差がある
   現実装も output clamp と nonfinite flagging を学習ループに入れていますが、論文が強調する複素数の実部・虚部 inspection や clamping 戦略を完全には再現していません。
 - 最適化の細部は論文実装と一致していない

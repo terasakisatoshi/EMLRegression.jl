@@ -15,6 +15,7 @@ for path in paths
         :depth => Int(row[:depth]),
         :target => String(row[:target]),
         :seed => Int(row[:seed]),
+        :init_strategy => String(get(row, :init_strategy, "small_gaussian")),
         :success => Bool(row[:success]),
         :reason => String(row[:reason]),
         :snap_status => String(get(row, :snap_status, "unknown")),
@@ -34,6 +35,7 @@ df = isempty(rows) ? DataFrame(
     depth=Int[],
     target=String[],
     seed=Int[],
+    init_strategy=String[],
     success=Bool[],
     reason=String[],
     snap_status=String[],
@@ -60,6 +62,7 @@ if !isempty(df)
         :ambiguous_nodes => _mean => :mean_ambiguous_nodes,
         :max_output_abs => _mean => :mean_max_output_abs,
         :max_node_abs => _mean => :mean_max_node_abs,
+        :init_strategy => (x -> join(sort!(unique(collect(x))), ",")) => :init_strategies,
         nrow => :runs,
     )
 else
@@ -79,6 +82,7 @@ else
         mean_ambiguous_nodes=Float64[],
         mean_max_output_abs=Float64[],
         mean_max_node_abs=Float64[],
+        init_strategies=String[],
         runs=Int[],
     )
 end
