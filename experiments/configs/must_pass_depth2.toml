@@ -4,4 +4,5 @@ targets = ["depth2_exp", "depth2_double_exp"]
 seeds = [1, 2, 3, 4, 5]
 steps = 500
 hardening_steps = 100
+learning_rate = 0.1
 batch_size = 64

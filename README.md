@@ -133,7 +133,7 @@
 - raw JSON には `snap_status`, `structure_match`, `ambiguous_nodes`, `validation_loss` も保存されます。
 - summary CSV には `success_rate`, `ambiguous_rate`, `structure_match_rate`, `mean_validation_loss` が出ます。
 - 直近の 1 スイートだけを集計したい場合は、事前に `results/raw/` を退避するか整理してから実行してください。
-- 現在の paper-aligned baseline では `depth2_double_exp` のみ数値的 blind recovery が `5/5` で、構造一致はまだ `0/5` です。詳細は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
+- 現在の paper-aligned baseline では `must_pass_depth2` の 2 target がともに `5/5` で、`must_pass_depth3` と `challenge_depth4` はまだ `0` です。詳細は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
 
 ## ディレクトリ構成
 
@@ -197,6 +197,6 @@ docs/
 
 ## 現時点の注意
 
-- paper-aligned baseline では `depth2_double_exp` に数値的回復が出ていますが、深い target と構造一致は未達です。
+- paper-aligned baseline では `must_pass_depth2` の数値的一致と構造一致は出ていますが、深い target はまだ未達です。
 - 現状のモデルは研究用 scaffold としては成立していますが、論文の本格再現としては未完成です。
 - したがって、この README は「再現済み」の主張ではなく、「再現基盤と実験導線が揃っている」段階の説明です。

@@ -20,12 +20,13 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     logit_margin = Float64[]
 
     total_steps = cfg.steps + cfg.hardening_steps
+    hardening_start = _effective_hardening_start(cfg)
 
     for step in 1:total_steps
         xs = sample_domain(target, cfg.batch_size; rng_seed=step)
         ys = evaluate_target(target, xs)
-        hardening_active = step >= cfg.hardening_start
-        temperature = _hardening_temperature(cfg, step, hardening_active)
+        hardening_active = step >= hardening_start
+        temperature = _hardening_temperature(cfg, step, hardening_start, hardening_active)
         grads = _finite_difference_gradient(ps) do ps_current
             preds, _ = Lux.apply(layer, xs, ps_current, st)
             mse_loss = _mse(preds, ys)
@@ -48,6 +49,16 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         :logit_margin => logit_margin,
     )
     return TrainingResult(cfg, metrics, no_failure, ps, st)
+end
+
+function _effective_hardening_start(cfg::TrainConfig)
+    if cfg.hardening_steps <= 0
+        return typemax(Int)
+    elseif cfg.hardening_start == typemax(Int)
+        return cfg.steps + 1
+    else
+        return cfg.hardening_start
+    end
 end
 
 """
@@ -117,10 +128,10 @@ function _softmax_probabilities(logits; temperature::Float64=1.0)
     return weights ./ sum(weights)
 end
 
-function _hardening_temperature(cfg::TrainConfig, step::Int, hardening_active::Bool)
+function _hardening_temperature(cfg::TrainConfig, step::Int, hardening_start::Int, hardening_active::Bool)
     if !hardening_active
         return cfg.temperature
     end
-    hardening_step = max(step - cfg.hardening_start, 0)
+    hardening_step = max(step - hardening_start, 0)
     return max(cfg.temperature * (0.5 ^ hardening_step), 0.1)
 end

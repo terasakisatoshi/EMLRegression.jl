@@ -29,3 +29,16 @@ end
     @test result.metrics[:hardening_loss] != fill(cfg.hardening_weight, cfg.hardening_steps)
     @test result.metrics[:logit_margin][end] > result.metrics[:logit_margin][1]
 end
+
+@testset "hardening defaults to the final steps" begin
+    cfg = TrainConfig(
+        depth=2,
+        target=:ln,
+        batch_size=32,
+        steps=4,
+        hardening_steps=3,
+        learning_rate=1e-2,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test length(result.metrics[:hardening_loss]) == cfg.hardening_steps
+end

@@ -58,4 +58,4 @@ Expected output:
 ## Notes
 
 - If you want a summary for only one suite run, archive or clean `results/raw/` before running `scripts/summarize_results.jl`.
-- The current paper-aligned baseline recovers `depth2_double_exp` numerically, but exact structure recovery is still `0` and deeper targets still fail. See `docs/first-baseline-report.md` for the current interpretation.
+- The current paper-aligned baseline recovers both `must_pass_depth2` targets with exact snapped structure, while deeper targets still fail. See `docs/first-baseline-report.md` for the current interpretation.

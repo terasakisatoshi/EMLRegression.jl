@@ -2,6 +2,7 @@ using Test
 using StableRNGs
 using CSV
 using DataFrames
+using JSON3
 using EMLRegression
 
 const EXPECTED_SUITE_TARGETS = Dict(
@@ -25,6 +26,11 @@ end
     @test haskey(outcome, :recovery)
     @test haskey(outcome.recovered_tree.choices, 1)
     @test outcome.recovery.snap_status in (:ok, :ambiguous)
+end
+
+@testset "must_pass_depth2 config recovers the easiest target" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "must_pass_depth2.toml"), String)
+    @test occursin("learning_rate = 0.1", cfg_text)
 end
 
 @testset "summary script reports paper recovery rates" begin

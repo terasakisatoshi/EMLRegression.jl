@@ -48,7 +48,28 @@ function ambiguous_node_count(layer::EMLTreeLayer, ps; margin_threshold=0.0)
 end
 
 function structure_match(expected::RecoveredTree, actual::RecoveredTree)
-    return expected.choices == actual.choices
+    return _active_choices(expected) == _active_choices(actual)
+end
+
+function _active_choices(tree::RecoveredTree)
+    active = Dict{Int,Tuple{Symbol,Symbol}}()
+    visited = Set{Int}()
+    _collect_active_choices!(active, visited, tree, 1)
+    return active
+end
+
+function _collect_active_choices!(active, visited, tree::RecoveredTree, node_id::Int)
+    node_id in visited && return active
+    push!(visited, node_id)
+    choice = tree.choices[node_id]
+    active[node_id] = choice
+    for symbol in choice
+        if startswith(String(symbol), "node_")
+            child_id = parse(Int, split(String(symbol), "_")[2])
+            _collect_active_choices!(active, visited, tree, child_id)
+        end
+    end
+    return active
 end
 
 function _snap_choice(candidates, logits; margin_threshold=0.0)

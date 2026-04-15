@@ -33,3 +33,17 @@ end
     @test evaluate_recovered(recovered_nested, depth2, xs) ≈ exp.(exp.(xs))
     @test formula_string(recovered_nested, depth2) == "eml(eml(x, 1), 1)"
 end
+
+@testset "structure match only compares active nodes" begin
+    expected = RecoveredTree(Dict(
+        1 => (:node_2, :const1),
+        2 => (:x, :const1),
+        3 => (:const1, :const1),
+    ))
+    actual = RecoveredTree(Dict(
+        1 => (:node_2, :const1),
+        2 => (:x, :const1),
+        3 => (:x, :const1),
+    ))
+    @test EMLRegression.structure_match(expected, actual)
+end
