@@ -3,7 +3,17 @@ using Lux
 using StableRNGs
 using EMLRegression
 
-@testset "EML layer forward pass" begin
+@testset "EML layer parameters are node-wise" begin
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    rng = StableRNG(1)
+    ps, st = Lux.setup(rng, layer)
+    @test haskey(ps, :nodes)
+    @test haskey(ps.nodes[1], :left_logits)
+    @test haskey(ps.nodes[1], :right_logits)
+    @test st == NamedTuple()
+end
+
+@testset "EML layer evaluates recursively" begin
     layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
     rng = StableRNG(1)
     ps, st = Lux.setup(rng, layer)
