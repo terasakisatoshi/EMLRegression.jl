@@ -1,0 +1,7 @@
+name = "must_pass_depth3"
+depth = 3
+targets = ["exp", "ln", "neg", "inv", "add", "mul"]
+seeds = [1, 2, 3]
+steps = 500
+hardening_steps = 100
+batch_size = 64

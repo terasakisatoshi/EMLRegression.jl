@@ -1,0 +1,7 @@
+name = "challenge_depth4"
+depth = 4
+targets = ["exp", "ln", "neg", "inv", "add", "mul"]
+seeds = [1, 2]
+steps = 250
+hardening_steps = 50
+batch_size = 64
