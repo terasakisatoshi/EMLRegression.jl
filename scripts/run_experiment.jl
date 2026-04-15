@@ -13,25 +13,35 @@ function parse_args(args)
     return parsed
 end
 
-function load_cfg(path, target_name)
+function _override_float(parsed, flag, fallback)
+    return haskey(parsed, flag) ? parse(Float64, parsed[flag]) : fallback
+end
+
+function _override_int(parsed, flag, fallback)
+    return haskey(parsed, flag) ? parse(Int, parsed[flag]) : fallback
+end
+
+function load_cfg(path, target_name, parsed=Dict{String,String}())
     cfg = TOML.parsefile(path)
     target = get_target(Symbol(target_name))
     if target.depth != cfg["depth"]
         error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
     end
+    config_name = get(parsed, "--config-name", cfg["name"])
     return TrainConfig(
         depth=target.depth,
         target=Symbol(target_name),
-        batch_size=cfg["batch_size"],
-        steps=cfg["steps"],
-        learning_rate=get(cfg, "learning_rate", 1.0e-2),
-        complexity_weight=get(cfg, "complexity_weight", 0.0),
-        hardening_steps=get(cfg, "hardening_steps", 0),
-        hardening_start=get(cfg, "hardening_start", typemax(Int)),
-        hardening_weight=get(cfg, "hardening_weight", 0.1),
-        temperature=get(cfg, "temperature", 1.0),
-        margin_threshold=get(cfg, "margin_threshold", 0.05),
-    ), cfg
+        batch_size=_override_int(parsed, "--batch-size", cfg["batch_size"]),
+        steps=_override_int(parsed, "--steps", cfg["steps"]),
+        learning_rate=_override_float(parsed, "--learning-rate", get(cfg, "learning_rate", 1.0e-2)),
+        complexity_weight=_override_float(parsed, "--complexity-weight", get(cfg, "complexity_weight", 0.0)),
+        hardening_steps=_override_int(parsed, "--hardening-steps", get(cfg, "hardening_steps", 0)),
+        hardening_start=_override_int(parsed, "--hardening-start", get(cfg, "hardening_start", typemax(Int))),
+        hardening_weight=_override_float(parsed, "--hardening-weight", get(cfg, "hardening_weight", 0.1)),
+        temperature=_override_float(parsed, "--temperature", get(cfg, "temperature", 1.0)),
+        margin_threshold=_override_float(parsed, "--margin-threshold", get(cfg, "margin_threshold", 0.05)),
+        stability_limit=_override_float(parsed, "--stability-limit", get(cfg, "stability_limit", 1.0e6)),
+    ), Dict("name" => config_name)
 end
 
 function write_raw_result(config_meta, cfg, seed, outcome)
@@ -48,6 +58,8 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "structure_match" => outcome.recovery.structure_match,
         "ambiguous_nodes" => outcome.recovery.ambiguous_nodes,
         "validation_loss" => outcome.recovery.validation_loss,
+        "numerical_match" => outcome.recovery.numerical_match,
+        "training_failure_reason" => String(outcome.recovery.training_failure_reason),
         "formula" => formula_string(outcome.recovered_tree, outcome.master_tree),
         "train_loss" => outcome.training.metrics[:train_loss],
         "hardening_loss" => outcome.training.metrics[:hardening_loss],
@@ -63,7 +75,7 @@ function write_raw_result(config_meta, cfg, seed, outcome)
 end
 
 parsed = parse_args(ARGS)
-cfg, meta = load_cfg(parsed["--config"], parsed["--target"])
+cfg, meta = load_cfg(parsed["--config"], parsed["--target"], parsed)
 seed = parse(Int, parsed["--seed"])
 outcome = run_experiment(cfg; rng=StableRNG(seed))
 path = write_raw_result(meta, cfg, seed, outcome)

@@ -22,7 +22,7 @@
 Expected output:
 
 - one JSON artifact in `results/raw/`
-- raw JSON includes `snap_status`, `structure_match`, `ambiguous_nodes`, and `validation_loss`
+- raw JSON includes `snap_status`, `structure_match`, `numerical_match`, `training_failure_reason`, `ambiguous_nodes`, and `validation_loss`
 - rerunning the same `config-target-seed` combination overwrites that file
 
 ## Batch Run
@@ -40,7 +40,7 @@ Expected output:
 Expected output:
 
 - `results/summaries/summary.csv`
-- summary columns include `success_rate`, `ambiguous_rate`, `structure_match_rate`, and `mean_validation_loss`
+- summary columns include `success_rate`, `numerical_match_rate`, `snap_ok_rate`, `ambiguous_rate`, `structure_match_rate`, `training_failure_rate`, and `mean_validation_loss`
 - summary includes every JSON currently present in `results/raw/`
 
 ## Formula Export
@@ -58,4 +58,4 @@ Expected output:
 ## Notes
 
 - If you want a summary for only one suite run, archive or clean `results/raw/` before running `scripts/summarize_results.jl`.
-- The current paper-aligned baseline recovers both `must_pass_depth2` targets with exact snapped structure, while deeper targets still fail. See `docs/first-baseline-report.md` for the current interpretation.
+- The current paper-aligned baseline recovers both `must_pass_depth2` targets with exact snapped structure, and `must_pass_depth3` now reaches numerical recovery without exact structure recovery, while `challenge_depth4` still fails. See `docs/first-baseline-report.md` for the current interpretation.

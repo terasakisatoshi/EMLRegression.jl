@@ -10,17 +10,36 @@ struct RecoveryVerdict
     structure_match::Bool
     ambiguous_nodes::Int
     validation_loss::Float64
+    numerical_match::Bool
+    training_failure_reason::Symbol
 end
 
 """
-    recovery_verdict(; train_loss, validation_loss, snap_status, numerical_match)
+    recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match)
 
-学習結果と snapping 結果から回復成功かどうかを判定します。
+学習結果と snapping 結果から、snapped tree が厳密に回復できたかを判定します。
 """
-function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match)
-    success = numerical_match
-    reason = success ? :recovered : snap_status != :ok ? :snap_failed : :mismatch
-    return RecoveryVerdict(success, reason, snap_status, structure_match, ambiguous_nodes, validation_loss)
+function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match, training_failure_reason=no_failure)
+    success = training_failure_reason == no_failure && snap_status == :ok && structure_match && numerical_match
+    reason = if training_failure_reason != no_failure
+        Symbol(string(training_failure_reason))
+    elseif success
+        :recovered
+    elseif snap_status != :ok
+        :snap_failed
+    else
+        :mismatch
+    end
+    return RecoveryVerdict(
+        success,
+        reason,
+        snap_status,
+        structure_match,
+        ambiguous_nodes,
+        validation_loss,
+        numerical_match,
+        Symbol(string(training_failure_reason)),
+    )
 end
 
 """

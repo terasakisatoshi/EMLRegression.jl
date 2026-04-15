@@ -20,6 +20,8 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     train_loss = Float64[]
     hardening_loss = Float64[]
     logit_margin = Float64[]
+    max_output_abs = Float64[]
+    failure_reason = no_failure
 
     total_steps = cfg.steps + cfg.hardening_steps
     hardening_start = _effective_hardening_start(cfg)
@@ -27,10 +29,17 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     for step in 1:total_steps
         xs = sample_domain(target, cfg.batch_size; rng=rng)
         ys = evaluate_target(target, xs)
+        stable_batch, batch_report = _stabilize_complex_values(xs, ys, ps, st, layer; limit=cfg.stability_limit)
+        if !_report_is_finite(batch_report)
+            failure_reason = _failure_reason(batch_report)
+            push!(max_output_abs, batch_report.max_abs)
+            break
+        end
         hardening_active = step >= hardening_start
         temperature = _hardening_temperature(cfg, step, hardening_start, hardening_active)
         grads = _autodiff_gradient(ps) do ps_current
             preds, _ = Lux.apply(layer, xs, ps_current, st)
+            preds, _ = _stabilize_complex_values(preds; limit=cfg.stability_limit)
             mse_loss = _mse(preds, ys)
             hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
             complexity_term = cfg.complexity_weight * _complexity_penalty(layer, ps_current; temperature=temperature)
@@ -38,6 +47,12 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         end
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
         preds, st = Lux.apply(layer, xs, ps, st)
+        preds, report = _stabilize_complex_values(preds; limit=cfg.stability_limit)
+        push!(max_output_abs, report.max_abs)
+        if !_report_is_finite(report)
+            failure_reason = _failure_reason(report)
+            break
+        end
         loss = _mse(preds, ys)
         push!(train_loss, loss)
         push!(logit_margin, _mean_logit_margin(ps))
@@ -50,8 +65,9 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         :train_loss => train_loss,
         :hardening_loss => hardening_loss,
         :logit_margin => logit_margin,
+        :max_output_abs => max_output_abs,
     )
-    return TrainingResult(cfg, metrics, no_failure, ps, st)
+    return TrainingResult(cfg, metrics, failure_reason, ps, st)
 end
 
 function _effective_hardening_start(cfg::TrainConfig)
@@ -145,4 +161,24 @@ function _hardening_temperature(cfg::TrainConfig, step::Int, hardening_start::In
     end
     hardening_step = max(step - hardening_start, 0)
     return max(cfg.temperature * (0.5 ^ hardening_step), 0.1)
+end
+
+function _stabilize_complex_values(values; limit::Float64)
+    report = inspect_complex_values(values)
+    if !_report_is_finite(report)
+        return values, report
+    end
+    clamped = clamp_complex_magnitude(values, limit)
+    return clamped, inspect_complex_values(clamped)
+end
+
+function _stabilize_complex_values(xs, ys, ps, st, layer; limit::Float64)
+    preds, _ = Lux.apply(layer, xs, ps, st)
+    return _stabilize_complex_values(preds; limit=limit)
+end
+
+_report_is_finite(report::StabilityReport) = !report.has_nan && !report.has_inf
+
+function _failure_reason(report::StabilityReport)
+    return report.failure_reason == no_failure ? nonfinite_detected : report.failure_reason
 end

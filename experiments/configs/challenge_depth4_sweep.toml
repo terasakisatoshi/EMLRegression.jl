@@ -1,0 +1,17 @@
+name = "challenge_depth4_sweep"
+depth = 4
+targets = ["depth4_nested"]
+seeds = [1, 2]
+steps = 250
+hardening_steps = 50
+batch_size = 64
+
+[[variants]]
+name = "baseline"
+
+[[variants]]
+name = "complexity_bias"
+complexity_weight = 0.05
+hardening_weight = 0.2
+temperature = 0.5
+stability_limit = 1000.0

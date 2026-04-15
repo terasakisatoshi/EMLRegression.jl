@@ -21,6 +21,8 @@ for path in paths
         :structure_match => Bool(get(row, :structure_match, false)),
         :ambiguous_nodes => Int(get(row, :ambiguous_nodes, 0)),
         :validation_loss => Float64(get(row, :validation_loss, Inf)),
+        :numerical_match => Bool(get(row, :numerical_match, false)),
+        :training_failure_reason => String(get(row, :training_failure_reason, "no_failure")),
         :formula => String(row[:formula]),
     ))
 end
@@ -36,6 +38,8 @@ df = isempty(rows) ? DataFrame(
     structure_match=Bool[],
     ambiguous_nodes=Int[],
     validation_loss=Float64[],
+    numerical_match=Bool[],
+    training_failure_reason=String[],
     formula=String[],
 ) : DataFrame(rows)
 if !isempty(df)
@@ -43,8 +47,11 @@ if !isempty(df)
         groupby(df, [:config_name, :tier, :depth, :target]),
         :success => sum => :success_count,
         :success => (x -> _mean(Float64.(x))) => :success_rate,
+        :numerical_match => (x -> _mean(Float64.(x))) => :numerical_match_rate,
+        :snap_status => (x -> _mean(Float64.(x .== "ok"))) => :snap_ok_rate,
         :snap_status => (x -> _mean(Float64.(x .== "ambiguous"))) => :ambiguous_rate,
         :structure_match => (x -> _mean(Float64.(x))) => :structure_match_rate,
+        :training_failure_reason => (x -> _mean(Float64.(x .!= "no_failure"))) => :training_failure_rate,
         :validation_loss => _mean => :mean_validation_loss,
         :ambiguous_nodes => _mean => :mean_ambiguous_nodes,
         nrow => :runs,
@@ -57,8 +64,11 @@ else
         target=String[],
         success_count=Int[],
         success_rate=Float64[],
+        numerical_match_rate=Float64[],
+        snap_ok_rate=Float64[],
         ambiguous_rate=Float64[],
         structure_match_rate=Float64[],
+        training_failure_rate=Float64[],
         mean_validation_loss=Float64[],
         mean_ambiguous_nodes=Float64[],
         runs=Int[],

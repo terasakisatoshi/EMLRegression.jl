@@ -27,6 +27,7 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
         structure_match=structure_match(target.tree, recovered),
         ambiguous_nodes=ambiguous_nodes,
         numerical_match=numerical_match(preds, ys),
+        training_failure_reason=training.failure_reason,
     )
 
     return (

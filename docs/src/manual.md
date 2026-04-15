@@ -55,6 +55,10 @@ raw JSON には次のような情報が入ります。
 - `seed`
 - `success`
 - `reason`
+- `snap_status`
+- `structure_match`
+- `numerical_match`
+- `training_failure_reason`
 - `formula`
 - `train_loss`
 - `hardening_loss`
@@ -90,6 +94,15 @@ summary CSV を作るには次を使います。
 ```
 
 このコマンドは、`results/raw/` に存在する JSON をすべて集計します。
+
+summary には strict recovery と数値一致を分けて見るための列も入ります。
+
+- `success_rate`
+- `numerical_match_rate`
+- `snap_ok_rate`
+- `ambiguous_rate`
+- `structure_match_rate`
+- `training_failure_rate`
 
 ### 重要
 

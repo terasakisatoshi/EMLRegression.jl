@@ -81,3 +81,42 @@ end
     @test any(!iszero, grads.nodes[1].left_logits)
     @test any(!iszero, grads.nodes[1].right_logits)
 end
+
+@testset "training loop clamps model outputs before recording metrics" begin
+    cfg = TrainConfig(
+        depth=2,
+        target=:depth2_exp,
+        batch_size=32,
+        steps=3,
+        learning_rate=1e-2,
+        stability_limit=0.25,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test haskey(result.metrics, :max_output_abs)
+    @test all(<=((0.25 + 1e-9)), result.metrics[:max_output_abs])
+end
+
+@testset "training loop reports nonfinite failure_reason on unstable batches" begin
+    overflow_target = TargetSpec(
+        :overflow_probe,
+        1,
+        :must_pass,
+        2,
+        RecoveredTree(Dict(1 => (:const1, :const1), 2 => (:const1, :const1), 3 => (:const1, :const1))),
+        (rng, n) -> ComplexF64.(fill(1000.0, n)),
+    )
+    EMLRegression.TARGETS[:overflow_probe] = overflow_target
+    try
+        cfg = TrainConfig(
+            depth=2,
+            target=:overflow_probe,
+            batch_size=8,
+            steps=2,
+            learning_rate=1e-2,
+        )
+        result = run_training(cfg; rng=StableRNG(1))
+        @test result.failure_reason == EMLRegression.inf_detected
+    finally
+        delete!(EMLRegression.TARGETS, :overflow_probe)
+    end
+end

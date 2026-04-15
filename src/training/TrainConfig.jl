@@ -15,6 +15,7 @@ Base.@kwdef struct TrainConfig
     hardening_weight::Float64 = 0.1
     temperature::Float64 = 1.0
     margin_threshold::Float64 = 0.05
+    stability_limit::Float64 = 1.0e6
 end
 
 """

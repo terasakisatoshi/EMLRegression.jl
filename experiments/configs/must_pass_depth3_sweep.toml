@@ -1,0 +1,20 @@
+name = "must_pass_depth3_sweep"
+depth = 3
+targets = ["depth3_log"]
+seeds = [1, 2, 3]
+steps = 500
+hardening_steps = 100
+batch_size = 64
+
+[[variants]]
+name = "baseline"
+learning_rate = 0.2
+complexity_weight = 0.05
+
+[[variants]]
+name = "cooler_hardening"
+learning_rate = 0.2
+complexity_weight = 0.05
+hardening_weight = 0.2
+temperature = 0.5
+

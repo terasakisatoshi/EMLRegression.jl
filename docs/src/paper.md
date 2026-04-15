@@ -53,13 +53,46 @@ EML は `log` を含むため、実数だけで扱うと定義域制約が厳し
 現在のリポジトリは、Section 4.3 を次のように切り出しています。
 
 - EML 演算子: 実装済み
+- 完全二分 master tree: 実装済み
+- node-wise な左右選択 logits: 実装済み
+- `Adam` + autodiff による学習ループ: 実装済み
+- hardening と complexity penalty: 実装済み
 - ターゲット関数群: 実装済み
 - 実験設定と CLI: 実装済み
-- blind recovery の枠組み: 実装済み
-- 本格的な trainable master tree: 未完成
+- snapping と blind recovery の枠組み: 実装済み
+- 論文どおりの安定化と recovery 基準: 未完成
 - 論文レベルの成功率: 未達
 
-つまり、研究再現の「導線」はできているが、「性能の本丸」はこれからです。
+つまり、研究再現の「導線」と最小限の学習系は揃っているが、「性能の本丸」と評価基準の厳密さはこれからです。
+
+## 論文との主なギャップ
+
+現時点で目立つギャップは次のとおりです。
+
+- strict success を測れるようにはなったが、論文レベルの回復率には届いていない
+  現在の `success` は snapped tree の `snap_status == :ok`、`structure_match == true`、`numerical_match == true` を要求します。ただし、この stricter metric を導入した結果、depth 3/4 はなお未達であることが明確になりました。
+- 深さ 3 は数値一致しても構造回復できていない
+  現ベースラインでは `depth3_log` が数値的には一致しますが、`structure_match_rate = 0.0` で、かつ曖昧 snap も残っています。論文の趣旨では未達です。
+- 深さ 4 の blind recovery が出ていない
+  現状の `depth4_nested` は `0/2` で、ランダム初期化からの回復は確認できていません。論文では深さ 3-4 で約 25% の blind recovery が報告されています。
+- 実験規模がかなり小さい
+  現在の同梱 suite は合計 15 runs だけで、論文の systematic experiments の規模には届いていません。論文では varied seeds and initialization strategies を含む 1000 超の runs が報告されています。
+- 深さ 5/6 の検証がない
+  リポジトリのターゲットと設定は深さ 2-4 までです。論文は depth 5 で 1% 未満、depth 6 で `0/448` まで評価しています。
+- basin-of-attraction の再現実験がない
+  論文は正解木の重みに Gaussian noise を加えても depth 5/6 で 100% 正解に戻ると述べていますが、その検証は現リポジトリにまだありません。
+- 数値安定化は入ったが、論文の安定化戦略とはまだ差がある
+  現実装も output clamp と nonfinite flagging を学習ループに入れていますが、論文が強調する複素数の実部・虚部 inspection や clamping 戦略を完全には再現していません。
+- 最適化の細部は論文実装と一致していない
+  現在の学習ループは `Zygote` による autodiff と `Optimisers.Adam` を使っていますが、論文の PyTorch `complex128` 実装と同一条件ではありません。特に安定化処理と収束挙動の差は残っています。
+- ターゲット集合が小さい
+  現在の paper-aligned suite は curated な 4 target に限られています。論文は composed EML 由来の target 群で systematic に比較しています。
+- 実装全体がまだ scaffold 段階
+  現在の実装は Section 4.3 の再現基盤としては読めますが、論文レベルの optimization quality と recovery rate には達していません。
+
+なお、以前の差分整理で挙げられがちだった「有限差分で勾配を計算している」という点は、現行 `HEAD` には当たりません。現在の学習ループは `Zygote` による autodiff を使っています。
+
+また、現在の raw JSON / summary では strict recovery と numerical match を分けて観測できるようにしてあります。したがって、depth 3 のような「数値は合うが snapped structure は外す」ケースを集計上で切り分けられます。
 
 ## この実装をどう読むべきか
 
