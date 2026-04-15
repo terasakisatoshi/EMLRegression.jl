@@ -6,3 +6,4 @@
 !/results/summaries/.gitkeep
 !/results/figures/.gitkeep
 /tmp/
+/.worktrees/
