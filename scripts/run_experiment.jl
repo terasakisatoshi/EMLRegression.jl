@@ -38,6 +38,9 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "hardening_loss" => outcome.training.metrics[:hardening_loss],
     )
     path = joinpath("results/raw", "$(config_meta["name"])-$(cfg.target)-seed$(seed).json")
+    if isfile(path)
+        println("overwriting existing raw result: " * path)
+    end
     open(path, "w") do io
         JSON3.write(io, result)
     end

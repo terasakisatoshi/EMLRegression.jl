@@ -24,4 +24,5 @@ else
     summary = DataFrame(config_name=String[], depth=Int[], target=String[], success_count=Int[], runs=Int[])
 end
 CSV.write("results/summaries/summary.csv", summary)
+println("aggregated $(length(paths)) raw result file(s) from results/raw/")
 println("results/summaries/summary.csv")

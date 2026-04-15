@@ -22,6 +22,7 @@
 Expected output:
 
 - one JSON artifact in `results/raw/`
+- rerunning the same `config-target-seed` combination overwrites that file
 
 ## Batch Run
 
@@ -38,6 +39,7 @@ Expected output:
 Expected output:
 
 - `results/summaries/summary.csv`
+- summary includes every JSON currently present in `results/raw/`
 
 ## Formula Export
 
@@ -50,3 +52,8 @@ Expected output:
 - raw experiment artifacts: `results/raw/`
 - summary tables: `results/summaries/`
 - generated figures: `results/figures/`
+
+## Notes
+
+- If you want a summary for only one suite run, archive or clean `results/raw/` before running `scripts/summarize_results.jl`.
+- The current baseline still reports zero blind recovery successes. See `docs/first-baseline-report.md` for the current interpretation.
