@@ -84,6 +84,22 @@ end
     @test outcome.recovery.structure_match
 end
 
+@testset "depth4 top-k snapping search can recover another longer cool seed" begin
+    cfg = TrainConfig(
+        depth=4,
+        target=:depth4_nested,
+        steps=600,
+        hardening_steps=150,
+        batch_size=64,
+        learning_rate=0.05,
+        hardening_weight=0.2,
+        temperature=1.0,
+    )
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+    @test outcome.recovery.success
+    @test outcome.recovery.structure_match
+end
+
 @testset "summary script reports paper recovery rates" begin
     repo_root = normpath(joinpath(@__DIR__, "..", ".."))
     summary_script = joinpath(repo_root, "scripts", "summarize_results.jl")

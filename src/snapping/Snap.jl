@@ -26,6 +26,42 @@ function snap_model(layer::EMLTreeLayer, ps; margin_threshold=0.0)
 end
 
 """
+    search_recovered_tree(layer, ps, master, xs, ys; top_k=3, beam_width=24, max_passes=6, loss_atol=1e-8)
+
+active node の top-k 候補を beam search で探索し、validation loss が最も小さい離散木を返します。
+"""
+function search_recovered_tree(layer::EMLTreeLayer, ps, master::MasterTree, xs, ys; top_k::Int=3, beam_width::Int=24, max_passes::Int=6, loss_atol::Float64=1.0e-8)
+    initial = _canonicalize_recovered_tree(snap_model(layer, ps), master)
+    beam = [_candidate_entry(initial, master, xs, ys)]
+    best = only(beam)
+
+    for _ in 1:max_passes
+        candidates = Dict{String,NamedTuple}()
+        for entry in beam
+            _insert_candidate!(candidates, entry)
+            for neighbor in _top_k_neighbors(entry.tree, layer, ps; top_k=top_k)
+                canonical = _canonicalize_recovered_tree(neighbor, master)
+                _insert_candidate!(candidates, _candidate_entry(canonical, master, xs, ys))
+            end
+        end
+
+        ranked = sort(collect(values(candidates)); lt=(left, right) -> _candidate_before(left, right; loss_atol=loss_atol))
+        new_beam = ranked[1:min(length(ranked), beam_width)]
+        new_best = first(new_beam)
+        previous_formulas = Set(entry.formula for entry in beam)
+        next_formulas = Set(entry.formula for entry in new_beam)
+        if previous_formulas == next_formulas
+            best = _candidate_before(new_best, best; loss_atol=loss_atol) ? new_best : best
+            break
+        end
+        beam = new_beam
+        best = _candidate_before(new_best, best; loss_atol=loss_atol) ? new_best : best
+    end
+
+    return refine_recovered_tree(best.tree, master, xs, ys; loss_atol=loss_atol)
+end
+
+"""
     refine_recovered_tree(tree, master, xs, ys; max_passes=4, loss_atol=1e-8)
 
 argmax で得た離散木を、数値一致を保ちながらより単純な構造へ貪欲に寄せます。
@@ -143,6 +179,31 @@ function _with_symbol_choice(tree::RecoveredTree, node_id::Int, side::Symbol, sy
     return RecoveredTree(choices, copy(tree.terminals), copy(tree.weights))
 end
 
+function _top_k_neighbors(tree::RecoveredTree, layer::EMLTreeLayer, ps; top_k::Int)
+    neighbors = RecoveredTree[]
+    for node_id in sort!(collect(_active_node_ids(tree)))
+        node = layer.tree.nodes[node_id]
+        node_ps = ps.nodes[node_id]
+        for (side, symbols) in (
+            (:left, _top_k_symbols(node.left_candidates, node_ps.left_logits, top_k)),
+            (:right, _top_k_symbols(node.right_candidates, node_ps.right_logits, top_k)),
+        )
+            current_symbol = side === :left ? tree.choices[node_id][1] : tree.choices[node_id][2]
+            for symbol in symbols
+                symbol == current_symbol && continue
+                push!(neighbors, _with_symbol_choice(tree, node_id, side, symbol))
+            end
+        end
+    end
+    return neighbors
+end
+
+function _top_k_symbols(candidates, logits, top_k::Int)
+    ranked = sort(collect(zip(candidates, logits)); by=last, rev=true)
+    limit = min(length(ranked), max(top_k, 1))
+    return [ranked[i][1] for i in 1:limit]
+end
+
 function _canonicalize_recovered_tree(tree::RecoveredTree, master::MasterTree)
     canonical = _left_packed_tree(tree, master)
     for node_id in sort!(collect(_active_node_ids(tree)))
@@ -223,6 +284,29 @@ end
 
 function _symbol_node_id(symbol::Symbol)
     return parse(Int, split(String(symbol), "_")[2])
+end
+
+function _candidate_entry(tree::RecoveredTree, master::MasterTree, xs, ys)
+    loss = _mse(evaluate_recovered(tree, master, xs), ys)
+    complexity = _tree_complexity(tree)
+    formula = formula_string(tree, master)
+    return (tree=tree, loss=loss, complexity=complexity, formula=formula)
+end
+
+function _candidate_before(left, right; loss_atol::Float64)
+    left.loss + loss_atol < right.loss && return true
+    right.loss + loss_atol < left.loss && return false
+    left.complexity + 1.0e-12 < right.complexity && return true
+    right.complexity + 1.0e-12 < left.complexity && return false
+    return left.formula < right.formula
+end
+
+function _insert_candidate!(candidates, entry)
+    key = entry.formula
+    if !haskey(candidates, key) || _candidate_before(entry, candidates[key]; loss_atol=1.0e-8)
+        candidates[key] = entry
+    end
+    return candidates
 end
 
 function _prefer_recovered_candidate(candidate_tree, candidate_loss, candidate_complexity, best_tree, best_loss, best_complexity; loss_atol::Float64)
