@@ -144,11 +144,52 @@ function _with_symbol_choice(tree::RecoveredTree, node_id::Int, side::Symbol, sy
 end
 
 function _canonicalize_recovered_tree(tree::RecoveredTree, master::MasterTree)
-    canonical = tree
+    canonical = _left_packed_tree(tree, master)
     for node_id in sort!(collect(_active_node_ids(tree)))
         canonical = _rewrite_log_identity(canonical, master, node_id)
     end
+    canonical = _left_packed_tree(canonical, master)
     return canonical
+end
+
+function _left_packed_tree(tree::RecoveredTree, master::MasterTree)
+    packed = copy(tree.choices)
+    _repack_subtree!(packed, tree.choices, master, master.root_id, master.root_id)
+    return RecoveredTree(packed, copy(tree.terminals), copy(tree.weights))
+end
+
+function _repack_subtree!(packed, source_choices, master::MasterTree, source_id::Int, packed_id::Int)
+    haskey(source_choices, source_id) || return packed
+
+    left_symbol, right_symbol = source_choices[source_id]
+    left_is_subtree = startswith(String(left_symbol), "node_")
+    right_is_subtree = startswith(String(right_symbol), "node_")
+    node = master.nodes[packed_id]
+
+    new_left = left_symbol
+    new_right = right_symbol
+
+    if left_is_subtree && right_is_subtree
+        left_child_id = something(node.left_child)
+        right_child_id = something(node.right_child)
+        new_left = Symbol("node_$(left_child_id)")
+        new_right = Symbol("node_$(right_child_id)")
+        _repack_subtree!(packed, source_choices, master, _symbol_node_id(left_symbol), left_child_id)
+        _repack_subtree!(packed, source_choices, master, _symbol_node_id(right_symbol), right_child_id)
+    elseif left_is_subtree || right_is_subtree
+        if left_is_subtree
+            child_id = right_symbol === :const1 ? something(node.left_child) : something(node.left_child)
+            new_left = Symbol("node_$(child_id)")
+            _repack_subtree!(packed, source_choices, master, _symbol_node_id(left_symbol), child_id)
+        else
+            child_id = left_symbol === :const1 ? something(node.left_child) : something(node.right_child)
+            new_right = Symbol("node_$(child_id)")
+            _repack_subtree!(packed, source_choices, master, _symbol_node_id(right_symbol), child_id)
+        end
+    end
+
+    packed[packed_id] = (new_left, new_right)
+    return packed
 end
 
 function _rewrite_log_identity(tree::RecoveredTree, master::MasterTree, node_id::Int)
@@ -178,6 +219,10 @@ function _rewrite_log_identity(tree::RecoveredTree, master::MasterTree, node_id:
     choices[left_child_id] = (Symbol("node_$(left_grandchild_id)"), :const1)
     choices[left_grandchild_id] = (:const1, inner_right)
     return RecoveredTree(choices, copy(tree.terminals), copy(tree.weights))
+end
+
+function _symbol_node_id(symbol::Symbol)
+    return parse(Int, split(String(symbol), "_")[2])
 end
 
 function _prefer_recovered_candidate(candidate_tree, candidate_loss, candidate_complexity, best_tree, best_loss, best_complexity; loss_atol::Float64)

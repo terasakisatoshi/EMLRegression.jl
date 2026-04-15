@@ -82,3 +82,31 @@ end
     refined = EMLRegression.refine_recovered_tree(initial, tree, xs, ys)
     @test EMLRegression.structure_match(target.tree, refined)
 end
+
+@testset "refine_recovered_tree left-packs equivalent subtrees for depth4 target" begin
+    tree = build_master_tree(depth=4, variables=(:x, :y))
+    target = get_target(:depth4_nested)
+    xs = sample_domain(target, 64; rng_seed=1)
+    ys = evaluate_target(target, xs)
+
+    initial = RecoveredTree(Dict(
+        1 => (:node_2, :node_3),
+        2 => (:x, :const1),
+        3 => (:const1, :node_7),
+        4 => (:const1, :const1),
+        5 => (:const1, :const1),
+        6 => (:const1, :const1),
+        7 => (:node_14, :y),
+        8 => (:const1, :const1),
+        9 => (:const1, :const1),
+        10 => (:const1, :const1),
+        11 => (:const1, :const1),
+        12 => (:const1, :const1),
+        13 => (:const1, :const1),
+        14 => (:x, :const1),
+        15 => (:const1, :const1),
+    ))
+
+    refined = EMLRegression.refine_recovered_tree(initial, tree, xs, ys)
+    @test EMLRegression.structure_match(target.tree, refined)
+end
