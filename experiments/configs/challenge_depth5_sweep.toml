@@ -1,0 +1,17 @@
+name = "challenge_depth5_sweep"
+depth = 5
+targets = ["depth5_affine_log"]
+seeds = [1, 2, 3, 4, 5, 6, 7, 8]
+steps = 400
+hardening_steps = 100
+batch_size = 64
+learning_rate = 0.05
+hardening_weight = 0.2
+temperature = 1.0
+
+[[variants]]
+name = "small_gaussian"
+
+[[variants]]
+name = "zero_bias"
+init_strategy = "zero_bias_to_inputs"

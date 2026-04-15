@@ -1,0 +1,7 @@
+name = "challenge_depth6"
+depth = 6
+targets = ["depth6_inverse_logy"]
+seeds = [1, 2]
+steps = 1000
+hardening_steps = 250
+batch_size = 64

@@ -1,0 +1,17 @@
+name = "challenge_depth6_sweep"
+depth = 6
+targets = ["depth6_inverse_logy"]
+seeds = [1, 2, 3, 4]
+steps = 1000
+hardening_steps = 250
+batch_size = 64
+learning_rate = 0.03
+hardening_weight = 0.2
+temperature = 1.0
+
+[[variants]]
+name = "small_gaussian"
+
+[[variants]]
+name = "zero_bias"
+init_strategy = "zero_bias_to_inputs"

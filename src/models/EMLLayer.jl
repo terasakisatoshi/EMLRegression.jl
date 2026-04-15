@@ -13,6 +13,7 @@ struct EMLTreeLayer{T} <: Lux.AbstractLuxLayer
 end
 
 const _EML_EXP_REAL_LIMIT = 40.0
+const _EML_NODE_ABS_LIMIT = 1.0e6
 
 EMLTreeLayer(tree; init_strategy::Symbol=:small_gaussian) = EMLTreeLayer(tree, init_strategy)
 
@@ -76,7 +77,7 @@ function _evaluate_node(layer::EMLTreeLayer, node_id::Int, x, ps)
     node_ps = ps.nodes[node_id]
     left_value = _soft_source_value(layer, node.left_candidates, x, ps, node_ps.left_logits)
     right_value = _soft_source_value(layer, node.right_candidates, x, ps, node_ps.right_logits)
-    return _layer_eml(left_value, right_value)
+    return clamp_complex_magnitude(_layer_eml(left_value, right_value), _EML_NODE_ABS_LIMIT)
 end
 
 function _soft_source_value(layer::EMLTreeLayer, candidates, x, ps, logits)

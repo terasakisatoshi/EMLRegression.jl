@@ -14,7 +14,7 @@ using EMLRegression
 end
 
 @testset "paper-aligned benchmark targets" begin
-    for name in (:depth2_exp, :depth2_double_exp, :depth3_log, :depth4_nested)
+    for name in (:depth2_exp, :depth2_double_exp, :depth3_log, :depth4_nested, :depth5_affine_log, :depth6_inverse_logy)
         target = get_target(name)
         xs = sample_domain(target, 8; rng_seed=2)
         ys = evaluate_target(target, xs)

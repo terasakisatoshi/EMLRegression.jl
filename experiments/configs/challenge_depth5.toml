@@ -1,0 +1,7 @@
+name = "challenge_depth5"
+depth = 5
+targets = ["depth5_affine_log"]
+seeds = [1, 2]
+steps = 400
+hardening_steps = 100
+batch_size = 64

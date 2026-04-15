@@ -157,3 +157,16 @@ end
     recovered = search_recovered_tree(layer, ps, tree, xs, ys)
     @test EMLRegression.structure_match(target.tree, recovered)
 end
+
+@testset "deep training clamps internal node magnitudes" begin
+    cfg = TrainConfig(
+        depth=6,
+        target=:depth6_inverse_logy,
+        batch_size=32,
+        steps=2,
+        learning_rate=0.03,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test haskey(result.metrics, :max_node_abs)
+    @test all(<=(1.0e6 + 1.0e-6), result.metrics[:max_node_abs])
+end

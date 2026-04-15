@@ -31,6 +31,12 @@ function _paper_target(name, tier, depth, tree, sampler, arity)
     return TargetSpec(name, arity, tier, depth, tree, sampler)
 end
 
+function _full_const_tree(depth::Int, overrides::Dict{Int,Tuple{Symbol,Symbol}})
+    choices = Dict(node_id => (:const1, :const1) for node_id in 1:(2^depth - 1))
+    merge!(choices, overrides)
+    return RecoveredTree(choices)
+end
+
 const PAPER_TARGETS = Dict{Symbol,TargetSpec}(
     :depth2_exp => _paper_target(
         :depth2_exp,
@@ -84,6 +90,37 @@ const PAPER_TARGETS = Dict{Symbol,TargetSpec}(
             13 => (:const1, :const1),
             14 => (:const1, :const1),
             15 => (:const1, :const1),
+        )),
+        (rng, n) -> _sample_pair(rng, n),
+        2,
+    ),
+    :depth5_affine_log => _paper_target(
+        :depth5_affine_log,
+        :challenge,
+        5,
+        _full_const_tree(5, Dict(
+            1 => (:node_2, :node_3),
+            2 => (:x, :const1),
+            3 => (:const1, :node_6),
+            6 => (:node_12, :y),
+            12 => (:const1, :node_24),
+            24 => (:x, :const1),
+        )),
+        (rng, n) -> _sample_pair(rng, n),
+        2,
+    ),
+    :depth6_inverse_logy => _paper_target(
+        :depth6_inverse_logy,
+        :challenge,
+        6,
+        _full_const_tree(6, Dict(
+            1 => (:node_2, :node_3),
+            2 => (:x, :const1),
+            3 => (:const1, :node_6),
+            6 => (:node_12, :y),
+            12 => (:const1, :node_24),
+            24 => (:const1, :node_48),
+            48 => (:x, :const1),
         )),
         (rng, n) -> _sample_pair(rng, n),
         2,

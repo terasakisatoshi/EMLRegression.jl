@@ -9,6 +9,8 @@ const EXPECTED_SUITE_TARGETS = Dict(
     "must_pass_depth2" => [:depth2_exp, :depth2_double_exp],
     "must_pass_depth3" => [:depth3_log],
     "challenge_depth4" => [:depth4_nested],
+    "challenge_depth5" => [:depth5_affine_log],
+    "challenge_depth6" => [:depth6_inverse_logy],
 )
 
 @testset "paper benchmark suite configs" begin
@@ -39,8 +41,15 @@ end
     @test occursin("complexity_weight = 0.05", cfg_text)
 end
 
-@testset "paper sweep suite configs exist for depth 3 and 4" begin
-    for suite in ("must_pass_depth3_sweep", "challenge_depth4_sweep", "challenge_depth4_init_sweep")
+@testset "paper sweep suite configs exist for depth 3 through 6" begin
+    for suite in (
+        "must_pass_depth3_sweep",
+        "challenge_depth4_sweep",
+        "challenge_depth4_init_sweep",
+        "challenge_depth5_sweep",
+        "challenge_depth5_basin_sweep",
+        "challenge_depth6_sweep",
+    )
         cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "$(suite).toml"), String)
         @test occursin("[[variants]]", cfg_text)
     end
@@ -65,6 +74,19 @@ end
     @test occursin("init_strategy = \"target_tree_noise\"", cfg_text)
     @test occursin("target_noise_std = 0.05", cfg_text)
     @test occursin("target_noise_std = 0.25", cfg_text)
+end
+
+@testset "challenge depth5 basin sweep covers noisy target initialization" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth5_basin_sweep.toml"), String)
+    @test occursin("init_strategy = \"target_tree_noise\"", cfg_text)
+    @test occursin("target_noise_std = 0.05", cfg_text)
+    @test occursin("target_noise_std = 0.25", cfg_text)
+end
+
+@testset "challenge depth6 sweep is configured as a negative control" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth6_sweep.toml"), String)
+    @test occursin("targets = [\"depth6_inverse_logy\"]", cfg_text)
+    @test occursin("name = \"zero_bias\"", cfg_text)
 end
 
 @testset "depth3 log target is not yet a strict recovery under complexity bias" begin
@@ -130,6 +152,40 @@ end
     outcome = run_experiment(cfg; rng=StableRNG(1))
     @test outcome.recovery.success
     @test outcome.recovery.structure_match
+end
+
+@testset "depth5 affine-log target recovers from target-tree basin initialization" begin
+    cfg = TrainConfig(
+        depth=5,
+        target=:depth5_affine_log,
+        steps=400,
+        hardening_steps=100,
+        batch_size=64,
+        learning_rate=0.05,
+        hardening_weight=0.2,
+        temperature=1.0,
+        init_strategy=:target_tree_noise,
+        target_noise_std=0.05,
+    )
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+    @test outcome.recovery.success
+    @test outcome.recovery.structure_match
+end
+
+@testset "depth6 inverse-logy target remains a blind-recovery negative control" begin
+    cfg = TrainConfig(
+        depth=6,
+        target=:depth6_inverse_logy,
+        steps=1000,
+        hardening_steps=250,
+        batch_size=64,
+        learning_rate=0.03,
+        hardening_weight=0.2,
+        temperature=1.0,
+        init_strategy=:small_gaussian,
+    )
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+    @test !outcome.recovery.success
 end
 
 @testset "summary script reports paper recovery rates" begin
