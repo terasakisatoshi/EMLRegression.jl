@@ -62,3 +62,23 @@ end
     @test EMLRegression.snap_status(layer, ps; margin_threshold=0.5) == :ok
     @test EMLRegression.ambiguous_node_count(layer, ps; margin_threshold=0.5) == 0
 end
+
+@testset "refine_recovered_tree prefers lower-complexity equivalent structure" begin
+    tree = build_master_tree(depth=3, variables=(:x,))
+    target = get_target(:depth3_log)
+    xs = ComplexF64[0.25 + 0.0im, 0.5 + 0.0im, 1.0 + 0.0im, 2.0 + 0.0im]
+    ys = evaluate_target(target, xs)
+
+    initial = RecoveredTree(Dict(
+        1 => (:x, :node_3),
+        2 => (:const1, :const1),
+        3 => (:node_6, :const1),
+        4 => (:const1, :const1),
+        5 => (:const1, :const1),
+        6 => (:x, :x),
+        7 => (:const1, :const1),
+    ))
+
+    refined = EMLRegression.refine_recovered_tree(initial, tree, xs, ys)
+    @test EMLRegression.structure_match(target.tree, refined)
+end

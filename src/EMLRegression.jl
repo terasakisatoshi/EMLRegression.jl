@@ -24,6 +24,7 @@ export eml
 export MasterTree
 export build_master_tree
 export EMLTreeLayer
+export _inspect_node_outputs
 export FailureReason
 export StabilityReport
 export inspect_complex_values
@@ -40,6 +41,7 @@ export evaluate_target
 export RecoveredTree
 export snap_logits
 export snap_model
+export refine_recovered_tree
 export evaluate_recovered
 export formula_string
 export RecoveryVerdict
