@@ -8,8 +8,12 @@ Base.@kwdef struct TrainConfig
     target::Symbol
     batch_size::Int
     steps::Int
+    learning_rate::Float64 = 1e-2
     hardening_steps::Int = 0
+    hardening_start::Int = typemax(Int)
     hardening_weight::Float64 = 0.1
+    temperature::Float64 = 1.0
+    margin_threshold::Float64 = 0.05
 end
 
 """

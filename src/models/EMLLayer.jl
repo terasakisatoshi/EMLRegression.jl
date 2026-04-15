@@ -1,5 +1,4 @@
 using Lux
-using ComponentArrays
 using StableRNGs: LehmerRNG
 
 """
@@ -18,7 +17,7 @@ function Lux.initialparameters(rng::LehmerRNG, layer::EMLTreeLayer)
             right_logits=zeros(Float64, length(node.right_candidates)),
         ) for node in layer.tree.nodes
     )
-    return ComponentArray(nodes=node_params)
+    return (; nodes=node_params)
 end
 
 Lux.initialstates(::LehmerRNG, ::EMLTreeLayer) = NamedTuple()
