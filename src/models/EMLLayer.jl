@@ -2,6 +2,11 @@ using Lux
 using ComponentArrays
 using StableRNGs: LehmerRNG
 
+"""
+    EMLTreeLayer(tree)
+
+`MasterTree` を `Lux.jl` のレイヤとして評価する最小実装です。
+"""
 struct EMLTreeLayer{T} <: Lux.AbstractLuxLayer
     tree::T
 end

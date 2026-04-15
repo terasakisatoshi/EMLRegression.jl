@@ -1,6 +1,11 @@
 using StableRNGs: StableRNG
 using Lux
 
+"""
+    run_training(cfg; rng=StableRNG(1))
+
+現在の最小 EML モデルで学習ループを実行し、`TrainingResult` を返します。
+"""
 function run_training(cfg::TrainConfig; rng=StableRNG(1))
     target = get_target(cfg.target)
     variables = target.arity == 1 ? (:x,) : (:x, :y)
@@ -26,6 +31,11 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     return TrainingResult(cfg, metrics, no_failure, ps, st)
 end
 
+"""
+    _mse(preds, ys)
+
+複素値対応の平均二乗誤差です。
+"""
 function _mse(preds, ys)
     diffs = preds .- ys
     return sum(abs2, diffs) / max(length(diffs), 1)

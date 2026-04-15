@@ -1,3 +1,8 @@
+"""
+    TrainConfig
+
+Section 4.3 の実験を動かすための最小設定です。
+"""
 Base.@kwdef struct TrainConfig
     depth::Int
     target::Symbol
@@ -7,6 +12,11 @@ Base.@kwdef struct TrainConfig
     hardening_weight::Float64 = 0.1
 end
 
+"""
+    TrainingResult
+
+学習ループの結果と、収集したメトリクスをまとめた構造体です。
+"""
 struct TrainingResult
     config::TrainConfig
     metrics::Dict{Symbol,Vector{Float64}}

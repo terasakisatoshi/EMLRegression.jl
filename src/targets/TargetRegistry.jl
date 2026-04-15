@@ -1,5 +1,10 @@
 using StableRNGs: StableRNG
 
+"""
+    TargetSpec
+
+ターゲット関数の定義、入力サンプラ、評価器をまとめた構造体です。
+"""
 struct TargetSpec
     name::Symbol
     arity::Int
@@ -32,13 +37,28 @@ const TARGETS = Dict{Symbol,TargetSpec}(
     :logxy => TargetSpec(:logxy, 2, :challenge, (rng, n) -> (_sample_positive(rng, n) .+ 1, _sample_positive(rng, n)), xy -> log.(xy[2]) ./ log.(xy[1])),
 )
 
+"""
+    get_target(name)
+
+登録済みターゲット関数を取得します。
+"""
 function get_target(name::Symbol)
     return TARGETS[name]
 end
 
+"""
+    sample_domain(target, n; rng_seed=1)
+
+ターゲットに対応する入力サンプルを生成します。
+"""
 function sample_domain(target::TargetSpec, n::Integer; rng_seed::Integer=1)
     rng = StableRNG(rng_seed)
     return target.sampler(rng, n)
 end
 
+"""
+    evaluate_target(target, xs)
+
+ターゲット関数を入力 `xs` 上で評価します。
+"""
 evaluate_target(target::TargetSpec, xs) = target.evaluator(xs)

@@ -1,5 +1,13 @@
 module EMLRegression
 
+"""
+    eml(x, y)
+
+論文で中心となる 2 項演算子です。
+要素ごとに `exp(x) - log(y)` を計算します。
+"""
+eml
+
 include("trees/TreeTypes.jl")
 include("trees/MasterTree.jl")
 include("models/EMLLayer.jl")
@@ -31,6 +39,7 @@ export evaluate_target
 export RecoveredTree
 export snap_logits
 export snap_model
+export evaluate_recovered
 export formula_string
 export RecoveryVerdict
 export recovery_verdict

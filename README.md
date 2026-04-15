@@ -174,6 +174,24 @@ docs/
 - [Design Spec](./docs/superpowers/specs/2026-04-15-eml-lux-symbolic-regression-design.md)
 - [Implementation Plan](./docs/superpowers/plans/2026-04-15-eml-lux-symbolic-regression.md)
 
+## Documenter ドキュメント
+
+`./docs` に Documenter.jl ベースの日本語ドキュメントサイトがあります。ビルド方法は次のとおりです。
+
+```bash
+~/.juliaup/bin/julia --project=docs docs/make.jl
+```
+
+生成先は `docs/build/` です。
+
+ローカルサーバで監視しながら確認する場合は `LiveServer.jl` の `servedocs` を使えます。
+
+```bash
+~/.juliaup/bin/julia --project=docs -e 'using LiveServer; servedocs(foldername="docs", buildfoldername="build", launch_browser=false)'
+```
+
+既定では `http://localhost:8000/` で確認できます。
+
 ## 現時点の注意
 
 - ベースラインは通るものの、blind recovery 成功率はまだ 0 のままです。

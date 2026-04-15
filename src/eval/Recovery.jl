@@ -1,5 +1,10 @@
 using StableRNGs: StableRNG
 
+"""
+    run_experiment(cfg; rng=StableRNG(1))
+
+学習、snapping、blind recovery 判定までをまとめて実行します。
+"""
 function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     training = run_training(cfg; rng=rng)
     target = get_target(cfg.target)
@@ -9,7 +14,7 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
 
     xs = sample_domain(target, cfg.batch_size; rng_seed=cfg.steps + 1)
     ys = evaluate_target(target, xs)
-    preds, _ = Lux.apply(layer, xs, training.params, training.state)
+    preds = evaluate_recovered(recovered, xs)
 
     verdict = recovery_verdict(
         train_loss=isempty(training.metrics[:train_loss]) ? Inf : training.metrics[:train_loss][end],

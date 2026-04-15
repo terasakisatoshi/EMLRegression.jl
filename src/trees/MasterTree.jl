@@ -1,3 +1,8 @@
+"""
+    build_master_tree(; depth, variables)
+
+指定した深さと変数集合から、完全二分木ベースの master tree を構築します。
+"""
 function build_master_tree(; depth::Integer, variables)
     depth >= 1 || throw(ArgumentError("depth must be at least 1"))
 
