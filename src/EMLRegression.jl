@@ -32,6 +32,7 @@ export clamp_complex_magnitude
 export TrainConfig
 export TrainingResult
 export run_training
+export _autodiff_gradient
 export TargetSpec
 export get_target
 export sample_domain

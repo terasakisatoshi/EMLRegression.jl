@@ -1,6 +1,8 @@
+using ChainRulesCore
 using StableRNGs: StableRNG
 using Lux
 using Optimisers
+using Zygote
 
 """
     run_training(cfg; rng=StableRNG(1))
@@ -27,7 +29,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         ys = evaluate_target(target, xs)
         hardening_active = step >= hardening_start
         temperature = _hardening_temperature(cfg, step, hardening_start, hardening_active)
-        grads = _finite_difference_gradient(ps) do ps_current
+        grads = _autodiff_gradient(ps) do ps_current
             preds, _ = Lux.apply(layer, xs, ps_current, st)
             mse_loss = _mse(preds, ys)
             hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
@@ -72,31 +74,10 @@ function _mse(preds, ys)
     return sum(abs2, diffs) / max(length(diffs), 1)
 end
 
-function _finite_difference_gradient(loss_fn, ps; eps=1e-4)
-    node_grads = Tuple(
-        (
-            left_logits=_finite_difference_array(loss_fn, ps, node_id, :left_logits; eps=eps),
-            right_logits=_finite_difference_array(loss_fn, ps, node_id, :right_logits; eps=eps),
-        ) for node_id in eachindex(ps.nodes)
-    )
-    return (; nodes=node_grads)
-end
-
-function _finite_difference_array(loss_fn, ps, node_id::Int, field::Symbol; eps=1e-4)
-    values = getproperty(ps.nodes[node_id], field)
-    grads = similar(values)
-    for idx in eachindex(values)
-        ps_plus = _perturb_params(ps, node_id, field, idx, eps)
-        ps_minus = _perturb_params(ps, node_id, field, idx, -eps)
-        grads[idx] = (loss_fn(ps_plus) - loss_fn(ps_minus)) / (2eps)
-    end
+function _autodiff_gradient(loss_fn, ps)
+    grads = only(Zygote.gradient(loss_fn, ps))
+    isnothing(grads) && error("autodiff returned no gradients for training parameters")
     return grads
-end
-
-function _perturb_params(ps, node_id::Int, field::Symbol, idx::Int, delta::Float64)
-    ps_copy = deepcopy(ps)
-    getproperty(ps_copy.nodes[node_id], field)[idx] += delta
-    return ps_copy
 end
 
 function _mean_logit_margin(ps)
@@ -114,27 +95,27 @@ function _logit_margin(logits)
 end
 
 function _hardening_penalty(ps; temperature::Float64=1.0)
-    penalties = Float64[]
-    for node in ps.nodes
-        push!(penalties, 1.0 - maximum(_softmax_probabilities(node.left_logits; temperature=temperature)))
-        push!(penalties, 1.0 - maximum(_softmax_probabilities(node.right_logits; temperature=temperature)))
-    end
+    penalties = (
+        1.0 - maximum(_softmax_probabilities(logits; temperature=temperature))
+        for node in ps.nodes
+        for logits in (node.left_logits, node.right_logits)
+    )
     return sum(penalties)
 end
 
 function _complexity_penalty(layer::EMLTreeLayer, ps; temperature::Float64=1.0)
-    penalties = Float64[]
-    for node in layer.tree.nodes
-        left_probs = _softmax_probabilities(ps.nodes[node.id].left_logits; temperature=temperature)
-        right_probs = _softmax_probabilities(ps.nodes[node.id].right_logits; temperature=temperature)
-        push!(penalties, sum(left_probs .* _candidate_costs(node.left_candidates)))
-        push!(penalties, sum(right_probs .* _candidate_costs(node.right_candidates)))
-    end
+    penalties = (
+        begin
+            probabilities = _softmax_probabilities(logits; temperature=temperature)
+            sum(probability * _candidate_cost(symbol) for (probability, symbol) in zip(probabilities, candidates))
+        end
+        for node in layer.tree.nodes
+        for (logits, candidates) in (
+            (ps.nodes[node.id].left_logits, node.left_candidates),
+            (ps.nodes[node.id].right_logits, node.right_candidates),
+        )
+    )
     return sum(penalties)
-end
-
-function _candidate_costs(candidates)
-    return Float64[_candidate_cost(symbol) for symbol in candidates]
 end
 
 function _candidate_cost(symbol::Symbol)
@@ -148,6 +129,8 @@ function _candidate_cost(symbol::Symbol)
         return 1.0
     end
 end
+
+ChainRulesCore.@non_differentiable _candidate_cost(::Any...)
 
 function _softmax_probabilities(logits; temperature::Float64=1.0)
     scaled = logits ./ max(temperature, 1.0e-6)

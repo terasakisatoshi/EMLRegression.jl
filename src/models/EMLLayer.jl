@@ -1,3 +1,4 @@
+using ChainRulesCore
 using Lux
 using StableRNGs: LehmerRNG
 
@@ -48,13 +49,9 @@ function _soft_source_value(layer::EMLTreeLayer, candidates, x, ps, logits)
 
     shifted = logits .- maximum(logits)
     weights = exp.(shifted)
-    weights ./= sum(weights)
-
-    total = zero(values[1])
-    for (w, v) in zip(weights, values)
-        total .+= w .* v
-    end
-    return total
+    probabilities = weights ./ sum(weights)
+    terms = map(((w, v),) -> w .* v, zip(probabilities, values))
+    return reduce((left, right) -> left .+ right, terms)
 end
 
 function _resolve_candidate_value(layer::EMLTreeLayer, symbol::Symbol, x, ps)
@@ -64,10 +61,14 @@ function _resolve_candidate_value(layer::EMLTreeLayer, symbol::Symbol, x, ps)
         return x isa Tuple ? x[1] : x
     elseif symbol === :y
         return x isa Tuple ? x[2] : throw(ArgumentError("terminal y requires binary input"))
-    elseif startswith(String(symbol), "node_")
-        child_id = parse(Int, split(String(symbol), "_")[2])
-        return _evaluate_node(layer, child_id, x, ps)
     else
-        throw(ArgumentError("unsupported terminal $(symbol)"))
+        child_id = _child_id_from_symbol(symbol)
+        return _evaluate_node(layer, child_id, x, ps)
     end
 end
+
+function _child_id_from_symbol(symbol::Symbol)
+    return parse(Int, split(String(symbol), "_")[2])
+end
+
+ChainRulesCore.@non_differentiable _child_id_from_symbol(::Any...)

@@ -1,5 +1,6 @@
 using Test
 using StableRNGs
+using Lux
 using EMLRegression
 
 @testset "training loop" begin
@@ -60,4 +61,23 @@ end
         ),
     )
     @test EMLRegression._complexity_penalty(layer, simple) < EMLRegression._complexity_penalty(layer, complex)
+end
+
+@testset "autodiff gradient matches parameter tree" begin
+    rng = StableRNG(1)
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    ps, st = Lux.setup(rng, layer)
+    xs = ComplexF64.([0.3, 0.7, 1.1])
+    ys = eml(xs, fill(1.0 + 0.0im, length(xs)))
+
+    grads = EMLRegression._autodiff_gradient(ps) do ps_current
+        preds, _ = Lux.apply(layer, xs, ps_current, st)
+        EMLRegression._mse(preds, ys)
+    end
+
+    @test length(grads.nodes) == length(ps.nodes)
+    @test length(grads.nodes[1].left_logits) == length(ps.nodes[1].left_logits)
+    @test length(grads.nodes[1].right_logits) == length(ps.nodes[1].right_logits)
+    @test any(!iszero, grads.nodes[1].left_logits)
+    @test any(!iszero, grads.nodes[1].right_logits)
 end
