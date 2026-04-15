@@ -16,6 +16,7 @@ for path in paths
         :target => String(row[:target]),
         :seed => Int(row[:seed]),
         :init_strategy => String(get(row, :init_strategy, "small_gaussian")),
+        :target_noise_std => Float64(get(row, :target_noise_std, 0.0)),
         :success => Bool(row[:success]),
         :reason => String(row[:reason]),
         :snap_status => String(get(row, :snap_status, "unknown")),
@@ -36,6 +37,7 @@ df = isempty(rows) ? DataFrame(
     target=String[],
     seed=Int[],
     init_strategy=String[],
+    target_noise_std=Float64[],
     success=Bool[],
     reason=String[],
     snap_status=String[],
@@ -63,6 +65,7 @@ if !isempty(df)
         :max_output_abs => _mean => :mean_max_output_abs,
         :max_node_abs => _mean => :mean_max_node_abs,
         :init_strategy => (x -> join(sort!(unique(collect(x))), ",")) => :init_strategies,
+        :target_noise_std => (x -> join(string.(sort!(unique(collect(x)))), ",")) => :target_noise_stds,
         nrow => :runs,
     )
 else
@@ -83,6 +86,7 @@ else
         mean_max_output_abs=Float64[],
         mean_max_node_abs=Float64[],
         init_strategies=String[],
+        target_noise_stds=String[],
         runs=Int[],
     )
 end

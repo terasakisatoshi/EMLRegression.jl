@@ -54,6 +54,7 @@ raw JSON には次のような情報が入ります。
 - `target`
 - `seed`
 - `init_strategy`
+- `target_noise_std`
 - `success`
 - `reason`
 - `snap_status`
@@ -101,6 +102,12 @@ depth 4 の初期化比較 sweep:
 ~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4_init_sweep.toml
 ```
 
+depth 4 の basin-of-attraction 風 sweep:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4_basin_sweep.toml
+```
+
 ## 5. 結果を集計する
 
 summary CSV を作るには次を使います。
@@ -122,8 +129,10 @@ summary には strict recovery と数値一致を分けて見るための列も�
 - `mean_max_output_abs`
 - `mean_max_node_abs`
 - `init_strategies`
+- `target_noise_stds`
 
 depth 4 の現状を見るなら、まず `challenge_depth4_sweep-longer_cool` を見て tuned schedule の上限を確認し、その次に `challenge_depth4_init_sweep-*` を見て初期化依存を比較してください。現状の 8-seed sweep では `challenge_depth4_init_sweep-zero_bias` が `6/8`、`challenge_depth4_init_sweep-small_gaussian` が `5/8`、`challenge_depth4_init_sweep-margin_biased` が `3/8` です。
+論文寄りの「正解近傍から戻るか」を見たい場合は `challenge_depth4_basin_sweep-*` を見てください。現状の depth 4 では `target_tree_noise` 初期化から `σ=0.05`, `0.10`, `0.25` のすべてで `8/8` です。
 
 ### 重要
 
@@ -177,6 +186,10 @@ baseline config ではまだ起こり得ます。まず `numerical_match_rate` �
 ### `depth4` の成功率が seed によってぶれる
 
 今は schedule だけでなく初期化の影響も大きいです。`challenge_depth4_init_sweep.toml` を回して、`init_strategies` 列と `success_rate` を見てください。現時点では `zero_bias_to_inputs` が最良です。
+
+### basin 実験を見たい
+
+`challenge_depth4_basin_sweep.toml` を使います。`init_strategy = "target_tree_noise"` で target tree に対応する logits から始め、`target_noise_std` で Gaussian noise の強さを変えます。
 
 ### `overwriting existing raw result:` と表示される
 

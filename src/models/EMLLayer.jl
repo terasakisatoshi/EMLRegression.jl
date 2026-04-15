@@ -31,6 +31,8 @@ function _initial_logits(rng::LehmerRNG, candidates, strategy::Symbol, child_id)
 
     if strategy === :small_gaussian
         return logits
+    elseif strategy === :target_tree_noise
+        return logits
     elseif strategy === :zero_bias_to_inputs
         return logits .+ _terminal_bias(candidates, child_id; terminal_boost=0.75, child_penalty=-0.75)
     elseif strategy === :subtree_favoring

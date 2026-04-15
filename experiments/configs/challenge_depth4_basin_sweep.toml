@@ -1,0 +1,23 @@
+name = "challenge_depth4_basin_sweep"
+depth = 4
+targets = ["depth4_nested"]
+seeds = [1, 2, 3, 4, 5, 6, 7, 8]
+steps = 300
+hardening_steps = 75
+batch_size = 64
+learning_rate = 0.05
+hardening_weight = 0.2
+temperature = 1.0
+init_strategy = "target_tree_noise"
+
+[[variants]]
+name = "sigma005"
+target_noise_std = 0.05
+
+[[variants]]
+name = "sigma010"
+target_noise_std = 0.10
+
+[[variants]]
+name = "sigma025"
+target_noise_std = 0.25

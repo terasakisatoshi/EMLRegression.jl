@@ -40,10 +40,11 @@ Expected output:
 Expected output:
 
 - `results/summaries/summary.csv`
-- summary columns include `success_rate`, `numerical_match_rate`, `snap_ok_rate`, `ambiguous_rate`, `structure_match_rate`, `training_failure_rate`, `mean_max_output_abs`, `mean_max_node_abs`, `mean_validation_loss`, and `init_strategies`
+- summary columns include `success_rate`, `numerical_match_rate`, `snap_ok_rate`, `ambiguous_rate`, `structure_match_rate`, `training_failure_rate`, `mean_max_output_abs`, `mean_max_node_abs`, `mean_validation_loss`, `init_strategies`, and `target_noise_stds`
 - summary includes every JSON currently present in `results/raw/`
 - `challenge_depth4_sweep-longer_cool` is the current depth-4 tuned variant to inspect after `top-k` snapping search
 - `challenge_depth4_init_sweep-zero_bias` is the current best initialization variant among the wider 8-seed depth-4 runs
+- `challenge_depth4_basin_sweep-*` is the current basin-of-attraction style check starting from noisy target-tree initializations
 
 ## Formula Export
 
@@ -63,4 +64,5 @@ Expected output:
 - The current paper-aligned baseline recovers both `must_pass_depth2` targets with exact snapped structure.
 - `must_pass_depth3_sweep-cooler_hardening` now reaches strict recovery, and depth-4 recovery should be checked through `challenge_depth4_sweep-longer_cool` rather than the untuned baseline.
 - `challenge_depth4_init_sweep` widens the depth-4 evaluation to `8` seeds and multiple initialization strategies. In the current results, `zero_bias_to_inputs` reaches `6/8`, `small_gaussian` reaches `5/8`, and `margin_biased` reaches `3/8`.
+- `challenge_depth4_basin_sweep` starts from the target tree plus Gaussian noise in logits. The current `depth4_nested` results are `8/8` for `σ=0.05`, `σ=0.10`, and `σ=0.25`.
 - `run_experiment` now applies a `top-k` snapping search before final greedy refinement, so recovered formulas can be structurally correct even when plain argmax snapping would collapse to a shallow tree.

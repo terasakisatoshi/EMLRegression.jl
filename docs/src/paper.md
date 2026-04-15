@@ -80,7 +80,7 @@ EML は `log` を含むため、実数だけで扱うと定義域制約が厳し
 - 深さ 5/6 の検証がない
   リポジトリのターゲットと設定は深さ 2-4 までです。論文は depth 5 で 1% 未満、depth 6 で `0/448` まで評価しています。
 - basin-of-attraction の再現実験がない
-  varied seeds / initialization strategies の sweep は入りましたが、論文が述べる「正解木近傍へ Gaussian noise を加えた初期値からの 100% recovery」はまだ未実装です。
+  近い実験は入りました。`challenge_depth4_basin_sweep` では target tree に対応する logits 初期値へ Gaussian noise を加え、`depth4_nested` で `σ=0.05`, `0.10`, `0.25` の各設定が `8/8` で strict recovery でした。ただし、論文の depth 5/6 まで含む basin-of-attraction 結果そのものはまだ未再現です。
 - 数値安定化は入ったが、論文の安定化戦略とはまだ差がある
   現実装も output clamp と nonfinite flagging を学習ループに入れていますが、論文が強調する複素数の実部・虚部 inspection や clamping 戦略を完全には再現していません。
 - 最適化の細部は論文実装と一致していない

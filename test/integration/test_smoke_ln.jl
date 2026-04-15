@@ -60,6 +60,13 @@ end
     @test occursin("seeds = [1, 2, 3, 4, 5, 6, 7, 8]", cfg_text)
 end
 
+@testset "challenge depth4 basin sweep covers noisy target initialization" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "challenge_depth4_basin_sweep.toml"), String)
+    @test occursin("init_strategy = \"target_tree_noise\"", cfg_text)
+    @test occursin("target_noise_std = 0.05", cfg_text)
+    @test occursin("target_noise_std = 0.25", cfg_text)
+end
+
 @testset "depth3 log target is not yet a strict recovery under complexity bias" begin
     cfg = TrainConfig(
         depth=3,
@@ -101,6 +108,24 @@ end
         learning_rate=0.05,
         hardening_weight=0.2,
         temperature=1.0,
+    )
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+    @test outcome.recovery.success
+    @test outcome.recovery.structure_match
+end
+
+@testset "depth4 target-tree basin initialization recovers under moderate noise" begin
+    cfg = TrainConfig(
+        depth=4,
+        target=:depth4_nested,
+        steps=300,
+        hardening_steps=75,
+        batch_size=64,
+        learning_rate=0.05,
+        hardening_weight=0.2,
+        temperature=1.0,
+        init_strategy=:target_tree_noise,
+        target_noise_std=0.05,
     )
     outcome = run_experiment(cfg; rng=StableRNG(1))
     @test outcome.recovery.success

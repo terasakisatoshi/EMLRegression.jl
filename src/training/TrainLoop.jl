@@ -14,6 +14,15 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     variables = target.arity == 1 ? (:x,) : (:x, :y)
     layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables); init_strategy=cfg.init_strategy)
     ps, st = Lux.setup(rng, layer)
+    if cfg.init_strategy === :target_tree_noise
+        ps = initialize_training_parameters(
+            rng,
+            layer,
+            target.tree;
+            init_strategy=cfg.init_strategy,
+            target_noise_std=cfg.target_noise_std,
+        )
+    end
     opt = Optimisers.Adam(cfg.learning_rate)
     opt_state = Optimisers.setup(opt, ps)
 
@@ -78,6 +87,49 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         :max_node_abs => max_node_abs,
     )
     return TrainingResult(cfg, metrics, failure_reason, ps, st)
+end
+
+function initialize_training_parameters(rng, layer::EMLTreeLayer, target_tree::RecoveredTree; init_strategy::Symbol, target_noise_std::Float64=0.0)
+    if init_strategy === :target_tree_noise
+        node_params = Tuple(
+            (
+                left_logits=_target_tree_logits(
+                    rng,
+                    node.left_candidates,
+                    _initial_choice_symbol(node.left_candidates, get(target_tree.choices, node.id, (:const1, :const1))[1]);
+                    noise_std=target_noise_std,
+                ),
+                right_logits=_target_tree_logits(
+                    rng,
+                    node.right_candidates,
+                    _initial_choice_symbol(node.right_candidates, get(target_tree.choices, node.id, (:const1, :const1))[2]);
+                    noise_std=target_noise_std,
+                ),
+            ) for node in layer.tree.nodes
+        )
+        return (; nodes=node_params)
+    end
+
+    ps, _ = Lux.setup(rng, EMLTreeLayer(layer.tree; init_strategy=init_strategy))
+    return ps
+end
+
+function _target_tree_logits(rng, candidates, selected_symbol; noise_std::Float64, selected_logit::Float64=4.0, other_logit::Float64=-4.0)
+    logits = fill(other_logit, length(candidates))
+    selected_index = findfirst(==(selected_symbol), candidates)
+    isnothing(selected_index) && error("selected symbol $(selected_symbol) not found in candidates")
+    logits[selected_index] = selected_logit
+    noise_std <= 0.0 && return logits
+    return logits .+ noise_std .* randn(rng, Float64, length(candidates))
+end
+
+function _initial_choice_symbol(candidates, selected_symbol::Symbol)
+    selected_symbol in candidates && return selected_symbol
+    if startswith(String(selected_symbol), "node_")
+        subtree_candidates = filter(symbol -> startswith(String(symbol), "node_"), candidates)
+        length(subtree_candidates) == 1 && return only(subtree_candidates)
+    end
+    return :const1 in candidates ? :const1 : first(candidates)
 end
 
 function _effective_hardening_start(cfg::TrainConfig)

@@ -137,3 +137,23 @@ end
     @test maximum(margin.nodes[1].left_logits) - minimum(margin.nodes[1].left_logits) >
           maximum(gaussian.nodes[1].left_logits) - minimum(gaussian.nodes[1].left_logits)
 end
+
+@testset "target-tree-noise initialization snaps to the source tree at zero noise" begin
+    target = get_target(:depth4_nested)
+    variables = target.arity == 1 ? (:x,) : (:x, :y)
+    tree = build_master_tree(depth=target.depth, variables=variables)
+    layer = EMLTreeLayer(tree; init_strategy=:small_gaussian)
+
+    ps = EMLRegression.initialize_training_parameters(
+        StableRNG(1),
+        layer,
+        target.tree;
+        init_strategy=:target_tree_noise,
+        target_noise_std=0.0,
+    )
+
+    xs = sample_domain(target, 32; rng=StableRNG(2))
+    ys = evaluate_target(target, xs)
+    recovered = search_recovered_tree(layer, ps, tree, xs, ys)
+    @test EMLRegression.structure_match(target.tree, recovered)
+end

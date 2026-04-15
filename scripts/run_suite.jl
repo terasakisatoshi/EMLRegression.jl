@@ -29,6 +29,7 @@ function variant_args(base_name, variant)
         "batch_size" => "--batch-size",
         "steps" => "--steps",
         "init_strategy" => "--init-strategy",
+        "target_noise_std" => "--target-noise-std",
         "learning_rate" => "--learning-rate",
         "complexity_weight" => "--complexity-weight",
         "hardening_steps" => "--hardening-steps",

@@ -20,11 +20,9 @@
 
 これは論文の最終目標よりかなり簡略化されています。まだ次の要素は入っていません。
 
-- ノードごとの独立した左右選択
-- 深い木全体に対する完全な master-formula 最適化
-- Adam による実際のパラメータ更新
-- hardening loss の本格的な導入
-- ambiguity を考慮した snapping
+- 論文と同規模の深さ 5/6 実験
+- basin-of-attraction の大規模比較
+- PyTorch `complex128` 実装との厳密一致
 
 ## `TrainConfig`
 
@@ -38,6 +36,10 @@
   各ステップでサンプルする点の数
 - `steps`
   学習ステップ数
+- `init_strategy`
+  初期値の与え方。`small_gaussian`、`zero_bias_to_inputs`、`margin_biased`、`subtree_favoring`、`target_tree_noise` を選べます
+- `target_noise_std`
+  `init_strategy = :target_tree_noise` のときだけ使う Gaussian noise の強さ
 - `hardening_steps`
   hardening を何ステップ回すか
 - `hardening_weight`
@@ -68,7 +70,7 @@
 
 学習後の logits を離散化する処理は [`snap_logits`](@ref) と [`snap_model`](@ref) にあります。
 
-現状は非常に単純で、最大ロジットを 1、他を 0 にするだけです。これは実験パイプラインを通すには十分ですが、論文の本格再現には不十分です。
+現状は plain argmax だけではなく、`top-k` 候補を beam search する `search_recovered_tree` を先に通します。これは depth 3/4 の strict recovery を押し上げるための実装上の工夫です。
 
 ## blind recovery 判定
 
@@ -83,10 +85,9 @@
 
 ## 今後の強化ポイント
 
-- `Optimisers.jl` を使った実際の更新則
-- ノード単位のパラメータ化
-- multi-branch な master tree
-- より賢い snapping
-- `Symbolics.jl` による式検証
+- より深い木での basin-of-attraction 実験
+- depth 5/6 を含む成功率比較
+- 論文の複素数安定化戦略との厳密な整合
+- `Symbolics.jl` による外挿含みの式検証
 
 このページは「今の実装が何をしているか」を理解するためのものであり、「論文どおりに再現できた」と主張するためのものではありません。
