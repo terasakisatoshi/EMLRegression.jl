@@ -24,6 +24,8 @@
 - basin-of-attraction の大規模比較
 - PyTorch `complex128` 実装との厳密一致
 
+ただし、最小限の depth 5/6 評価自体は入りました。現状は depth 5 で basin recovery が `8/8`、blind recovery は `0/8`、depth 6 の blind sweep は `0/4` です。
+
 ## `TrainConfig`
 
 学習設定は [`TrainConfig`](@ref) で与えます。主要フィールドは次のとおりです。
@@ -76,17 +78,20 @@
 
 最終判定は [`recovery_verdict`](@ref) と [`run_experiment`](@ref) が担当します。
 
-現在は:
+現在は strict recovery として
 
-- snapping が成功したか
-- 数値的に一致したか
+- `snap_status == :ok`
+- `structure_match == true`
+- `numerical_match == true`
+- `training_failure_reason == :no_failure`
 
-を主に見ています。理想的にはここに、より厳密な symbolic verification や外挿点での評価も加えるべきです。
+を見ています。理想的にはここに、より厳密な symbolic verification や外挿点での評価も加えるべきです。
 
 ## 今後の強化ポイント
 
 - より深い木での basin-of-attraction 実験
-- depth 5/6 を含む成功率比較
+- depth 5 blind recovery の改善
+- depth 6 を含む成功率比較の大規模化
 - 論文の複素数安定化戦略との厳密な整合
 - `Symbolics.jl` による外挿含みの式検証
 

@@ -77,16 +77,18 @@ EML は `log` を含むため、実数だけで扱うと定義域制約が厳し
   `challenge_depth4_sweep-longer_cool` は `2/2` の strict recovery です。さらに `challenge_depth4_init_sweep` では `8` seeds の比較を行い、`zero_bias_to_inputs` が `6/8`、`small_gaussian` が `5/8`、`margin_biased` が `3/8` でした。depth 4 で blind recovery 自体は確認できていますが、論文のような大規模比較にはまだ遠いです。
 - 実験規模がかなり小さい
   現在は varied seeds と initialization strategies の sweep を入れ始めましたが、規模はなお小さいです。論文では 1000 超の runs が報告されています。
-- 深さ 5/6 の検証がない
-  リポジトリのターゲットと設定は深さ 2-4 までです。論文は depth 5 で 1% 未満、depth 6 で `0/448` まで評価しています。
-- basin-of-attraction の再現実験がない
-  近い実験は入りました。`challenge_depth4_basin_sweep` では target tree に対応する logits 初期値へ Gaussian noise を加え、`depth4_nested` で `σ=0.05`, `0.10`, `0.25` の各設定が `8/8` で strict recovery でした。ただし、論文の depth 5/6 まで含む basin-of-attraction 結果そのものはまだ未再現です。
+- 深さ 5 は basin では戻るが blind recovery はまだ出ていない
+  `challenge_depth5_basin_sweep` では `depth5_affine_log` が `σ=0.05`, `0.10`, `0.25` の各設定で `8/8` の strict recovery です。一方で blind sweep の `challenge_depth5_sweep-small_gaussian` と `challenge_depth5_sweep-zero_bias` はどちらも `0/8` で、論文の depth 5 blind recovery を再現するには至っていません。
+- 深さ 6 は negative control としては論文寄りだが、評価規模はまだ小さい
+  `challenge_depth6_sweep-small_gaussian` と `challenge_depth6_sweep-zero_bias` はどちらも `0/4` でした。direction としては論文の depth 6 `0/448` に整合的ですが、seed 数はまだ少なく、統計的な比較にはなっていません。
+- basin-of-attraction は深さ 5 まで入ったが、論文の depth 6 までは未到達
+  `challenge_depth4_basin_sweep` と `challenge_depth5_basin_sweep` はどちらも `target_tree_noise` 初期化から `σ=0.05`, `0.10`, `0.25` の各設定で `8/8` の strict recovery です。ただし、論文のように depth 6 まで含む basin-of-attraction 結果そのものはまだ未再現です。
 - 数値安定化は入ったが、論文の安定化戦略とはまだ差がある
   現実装も output clamp と nonfinite flagging を学習ループに入れていますが、論文が強調する複素数の実部・虚部 inspection や clamping 戦略を完全には再現していません。
 - 最適化の細部は論文実装と一致していない
   現在の学習ループは `Zygote` による autodiff と `Optimisers.Adam` を使っていますが、論文の PyTorch `complex128` 実装と同一条件ではありません。特に安定化処理と収束挙動の差は残っています。
 - ターゲット集合が小さい
-  現在の paper-aligned suite は curated な 4 target に限られています。論文は composed EML 由来の target 群で systematic に比較しています。
+  現在の paper-aligned suite は curated な 6 target に限られています。論文は composed EML 由来の target 群で systematic に比較しています。
 - 実装全体がまだ scaffold 段階
   現在の実装は Section 4.3 の再現基盤としては読めますが、論文レベルの optimization quality と recovery rate には達していません。
 

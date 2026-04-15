@@ -108,6 +108,19 @@ depth 4 の basin-of-attraction 風 sweep:
 ~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4_basin_sweep.toml
 ```
 
+depth 5 の blind / basin sweep:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth5_sweep.toml
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth5_basin_sweep.toml
+```
+
+depth 6 の negative-control sweep:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth6_sweep.toml
+```
+
 ## 5. 結果を集計する
 
 summary CSV を作るには次を使います。
@@ -133,6 +146,8 @@ summary には strict recovery と数値一致を分けて見るための列も�
 
 depth 4 の現状を見るなら、まず `challenge_depth4_sweep-longer_cool` を見て tuned schedule の上限を確認し、その次に `challenge_depth4_init_sweep-*` を見て初期化依存を比較してください。現状の 8-seed sweep では `challenge_depth4_init_sweep-zero_bias` が `6/8`、`challenge_depth4_init_sweep-small_gaussian` が `5/8`、`challenge_depth4_init_sweep-margin_biased` が `3/8` です。
 論文寄りの「正解近傍から戻るか」を見たい場合は `challenge_depth4_basin_sweep-*` を見てください。現状の depth 4 では `target_tree_noise` 初期化から `σ=0.05`, `0.10`, `0.25` のすべてで `8/8` です。
+depth 5 は blind recovery がまだ弱く、`challenge_depth5_sweep-small_gaussian` と `challenge_depth5_sweep-zero_bias` はどちらも `0/8` です。一方で `challenge_depth5_basin_sweep-*` は `σ=0.05`, `0.10`, `0.25` のすべてで `8/8` なので、最適化 basin には入るが blind search はまだ足りないと読めます。
+depth 6 は negative control で、現状の `challenge_depth6_sweep-small_gaussian` と `challenge_depth6_sweep-zero_bias` はどちらも `0/4` です。
 
 ### 重要
 
@@ -187,9 +202,17 @@ baseline config ではまだ起こり得ます。まず `numerical_match_rate` �
 
 今は schedule だけでなく初期化の影響も大きいです。`challenge_depth4_init_sweep.toml` を回して、`init_strategies` 列と `success_rate` を見てください。現時点では `zero_bias_to_inputs` が最良です。
 
+### `depth5` で basin は通るのに blind recovery が通らない
+
+今の実装ではこの挙動が自然です。`challenge_depth5_basin_sweep.toml` が `8/8` でも、`challenge_depth5_sweep.toml` は `0/8` です。現状は初期化が十分に深い構造へ入っていません。
+
+### `depth6` をどう読むか
+
+`challenge_depth6_sweep.toml` は negative control です。いまの `0/4` は失敗ではなく、論文の depth 6 が極端に難しいという主張に沿った挙動です。
+
 ### basin 実験を見たい
 
-`challenge_depth4_basin_sweep.toml` を使います。`init_strategy = "target_tree_noise"` で target tree に対応する logits から始め、`target_noise_std` で Gaussian noise の強さを変えます。
+`challenge_depth4_basin_sweep.toml` か `challenge_depth5_basin_sweep.toml` を使います。`init_strategy = "target_tree_noise"` で target tree に対応する logits から始め、`target_noise_std` で Gaussian noise の強さを変えます。
 
 ### `overwriting existing raw result:` と表示される
 

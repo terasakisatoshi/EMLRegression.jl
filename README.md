@@ -105,6 +105,14 @@
 ~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth4.toml
 ```
 
+深さ 5/6 の追加評価:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth5_sweep.toml
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth5_basin_sweep.toml
+~/.juliaup/bin/julia --project=. scripts/run_suite.jl --config experiments/configs/challenge_depth6_sweep.toml
+```
+
 ## 結果の集計と確認
 
 集計 CSV を生成:
@@ -136,6 +144,8 @@
 - baseline だけを見ると `must_pass_depth2` は `5/5`、`must_pass_depth3` は数値一致 `3/3` だが構造一致 `0/3`、`challenge_depth4` は `0/2` です。
 - tuned sweep では `must_pass_depth3_sweep-cooler_hardening` が strict recovery、`challenge_depth4_sweep-longer_cool` も strict recovery に到達しています。
 - basin sweep では `challenge_depth4_basin_sweep` の `σ=0.05`, `0.10`, `0.25` がいずれも `8/8` です。
+- depth 5 は blind sweep ではまだ `0/8` ですが、`challenge_depth5_basin_sweep` は `σ=0.05`, `0.10`, `0.25` の各設定で `8/8` です。
+- depth 6 は `challenge_depth6_sweep-small_gaussian` と `challenge_depth6_sweep-zero_bias` がどちらも `0/4` で、現状の negative control になっています。
 
 ## ディレクトリ構成
 
@@ -199,6 +209,6 @@ docs/
 
 ## 現時点の注意
 
-- paper-aligned baseline では `must_pass_depth2` の数値的一致と構造一致は出ていますが、深い target はまだ未達です。
+- paper-aligned baseline では `must_pass_depth2` の数値的一致と構造一致は出ています。depth 4 までは tuned blind recovery が入り、depth 5 は basin では回復しますが blind recovery は未達、depth 6 は negative control です。
 - 現状のモデルは研究用 scaffold としては成立していますが、論文の本格再現としては未完成です。
 - したがって、この README は「再現済み」の主張ではなく、「再現基盤と実験導線が揃っている」段階の説明です。
