@@ -13,3 +13,7 @@ end
 if should_run("models")
     include("models/test_eml_layer.jl")
 end
+
+if should_run("training")
+    include("training/test_stability.jl")
+end
