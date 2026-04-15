@@ -12,6 +12,15 @@ The current milestone is a CPU-first reproduction of trainable EML trees with co
 ~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
+## Smoke Experiment
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_experiment.jl --config experiments/configs/must_pass_depth2.toml --target ln --seed 1
+~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
+```
+
+The supported path is CPU-first. GPU execution is not part of the current milestone.
+
 ## Results Layout
 
 - `results/raw/`: per-run artifacts
