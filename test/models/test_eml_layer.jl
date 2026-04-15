@@ -23,3 +23,11 @@ end
     @test eltype(y) == ComplexF64
     @test st2 == st
 end
+
+@testset "EML layer initialization depends on rng" begin
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    ps1, _ = Lux.setup(StableRNG(1), layer)
+    ps2, _ = Lux.setup(StableRNG(2), layer)
+    @test ps1 != ps2
+    @test any(!iszero, ps1.nodes[1].left_logits)
+end

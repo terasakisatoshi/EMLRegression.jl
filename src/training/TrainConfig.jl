@@ -9,6 +9,7 @@ Base.@kwdef struct TrainConfig
     batch_size::Int
     steps::Int
     learning_rate::Float64 = 1e-2
+    complexity_weight::Float64 = 0.0
     hardening_steps::Int = 0
     hardening_start::Int = typemax(Int)
     hardening_weight::Float64 = 0.1

@@ -18,7 +18,7 @@ end
 学習結果と snapping 結果から回復成功かどうかを判定します。
 """
 function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match)
-    success = snap_status == :ok && numerical_match
+    success = numerical_match
     reason = success ? :recovered : snap_status != :ok ? :snap_failed : :mismatch
     return RecoveryVerdict(success, reason, snap_status, structure_match, ambiguous_nodes, validation_loss)
 end

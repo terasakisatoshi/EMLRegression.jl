@@ -42,3 +42,22 @@ end
     result = run_training(cfg; rng=StableRNG(1))
     @test length(result.metrics[:hardening_loss]) == cfg.hardening_steps
 end
+
+@testset "complexity penalty prefers simpler selections" begin
+    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+    simple = (
+        nodes=(
+            (left_logits=[8.0, -8.0, -8.0], right_logits=[8.0, -8.0, -8.0]),
+            (left_logits=[8.0, -8.0], right_logits=[8.0, -8.0]),
+            (left_logits=[8.0, -8.0], right_logits=[8.0, -8.0]),
+        ),
+    )
+    complex = (
+        nodes=(
+            (left_logits=[-8.0, 8.0, -8.0], right_logits=[-8.0, -8.0, 8.0]),
+            (left_logits=[-8.0, 8.0], right_logits=[-8.0, 8.0]),
+            (left_logits=[-8.0, 8.0], right_logits=[-8.0, 8.0]),
+        ),
+    )
+    @test EMLRegression._complexity_penalty(layer, simple) < EMLRegression._complexity_penalty(layer, complex)
+end

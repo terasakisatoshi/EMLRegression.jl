@@ -114,9 +114,12 @@ get_target(name::Symbol) = TARGETS[name]
 
 ターゲットに対応する入力サンプルを生成します。
 """
-function sample_domain(target::TargetSpec, n::Integer; rng_seed::Integer=1)
-    rng = StableRNG(rng_seed)
-    return target.sampler(rng, n)
+function sample_domain(target::TargetSpec, n::Integer; rng_seed::Union{Integer,Nothing}=1, rng=nothing)
+    if !isnothing(rng)
+        return target.sampler(rng, n)
+    end
+    seeded_rng = StableRNG(something(rng_seed, 1))
+    return target.sampler(seeded_rng, n)
 end
 
 """

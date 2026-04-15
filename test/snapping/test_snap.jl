@@ -47,3 +47,18 @@ end
     ))
     @test EMLRegression.structure_match(expected, actual)
 end
+
+@testset "snap diagnostics ignore inactive ambiguous nodes" begin
+    tree = build_master_tree(depth=2, variables=(:x,))
+    layer = EMLTreeLayer(tree)
+    ps = (
+        nodes=(
+            (left_logits=[0.0, 0.0, 3.0], right_logits=[3.0, 0.0, 0.0]),
+            (left_logits=[0.0, 2.0], right_logits=[2.0, 0.0]),
+            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
+        ),
+    )
+
+    @test EMLRegression.snap_status(layer, ps; margin_threshold=0.5) == :ok
+    @test EMLRegression.ambiguous_node_count(layer, ps; margin_threshold=0.5) == 0
+end

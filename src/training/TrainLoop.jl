@@ -23,7 +23,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     hardening_start = _effective_hardening_start(cfg)
 
     for step in 1:total_steps
-        xs = sample_domain(target, cfg.batch_size; rng_seed=step)
+        xs = sample_domain(target, cfg.batch_size; rng=rng)
         ys = evaluate_target(target, xs)
         hardening_active = step >= hardening_start
         temperature = _hardening_temperature(cfg, step, hardening_start, hardening_active)
@@ -31,7 +31,8 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
             preds, _ = Lux.apply(layer, xs, ps_current, st)
             mse_loss = _mse(preds, ys)
             hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
-            mse_loss + hardening_term
+            complexity_term = cfg.complexity_weight * _complexity_penalty(layer, ps_current; temperature=temperature)
+            mse_loss + hardening_term + complexity_term
         end
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
         preds, st = Lux.apply(layer, xs, ps, st)
@@ -119,6 +120,33 @@ function _hardening_penalty(ps; temperature::Float64=1.0)
         push!(penalties, 1.0 - maximum(_softmax_probabilities(node.right_logits; temperature=temperature)))
     end
     return sum(penalties)
+end
+
+function _complexity_penalty(layer::EMLTreeLayer, ps; temperature::Float64=1.0)
+    penalties = Float64[]
+    for node in layer.tree.nodes
+        left_probs = _softmax_probabilities(ps.nodes[node.id].left_logits; temperature=temperature)
+        right_probs = _softmax_probabilities(ps.nodes[node.id].right_logits; temperature=temperature)
+        push!(penalties, sum(left_probs .* _candidate_costs(node.left_candidates)))
+        push!(penalties, sum(right_probs .* _candidate_costs(node.right_candidates)))
+    end
+    return sum(penalties)
+end
+
+function _candidate_costs(candidates)
+    return Float64[_candidate_cost(symbol) for symbol in candidates]
+end
+
+function _candidate_cost(symbol::Symbol)
+    if symbol === :const1
+        return 0.0
+    elseif symbol === :x || symbol === :y
+        return 1.0
+    elseif startswith(String(symbol), "node_")
+        return 2.0
+    else
+        return 1.0
+    end
 end
 
 function _softmax_probabilities(logits; temperature::Float64=1.0)

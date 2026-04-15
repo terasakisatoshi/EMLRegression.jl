@@ -30,7 +30,27 @@ end
 
 @testset "must_pass_depth2 config recovers the easiest target" begin
     cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "must_pass_depth2.toml"), String)
-    @test occursin("learning_rate = 0.1", cfg_text)
+    @test occursin("learning_rate = 0.2", cfg_text)
+end
+
+@testset "must_pass_depth3 config enables complexity-biased recovery" begin
+    cfg_text = read(joinpath(@__DIR__, "..", "..", "experiments", "configs", "must_pass_depth3.toml"), String)
+    @test occursin("learning_rate = 0.2", cfg_text)
+    @test occursin("complexity_weight = 0.05", cfg_text)
+end
+
+@testset "depth3 log target can recover with complexity bias" begin
+    cfg = TrainConfig(
+        depth=3,
+        target=:depth3_log,
+        steps=500,
+        hardening_steps=100,
+        batch_size=64,
+        learning_rate=0.2,
+        complexity_weight=0.05,
+    )
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+    @test outcome.recovery.success
 end
 
 @testset "summary script reports paper recovery rates" begin

@@ -1,4 +1,5 @@
 using Test
+using StableRNGs
 using EMLRegression
 
 @testset "target registry" begin
@@ -20,4 +21,11 @@ end
         @test !isempty(ys)
         @test target.tier in (:must_pass, :challenge)
     end
+end
+
+@testset "target sampling can use an explicit rng" begin
+    target = get_target(:depth3_log)
+    xs1 = sample_domain(target, 8; rng=StableRNG(1))
+    xs2 = sample_domain(target, 8; rng=StableRNG(2))
+    @test xs1 != xs2
 end

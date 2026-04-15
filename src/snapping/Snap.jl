@@ -26,7 +26,9 @@ function snap_model(layer::EMLTreeLayer, ps; margin_threshold=0.0)
 end
 
 function snap_status(layer::EMLTreeLayer, ps; margin_threshold=0.0)
+    active_node_ids = _active_node_ids(snap_model(layer, ps; margin_threshold=margin_threshold))
     for node in layer.tree.nodes
+        node.id in active_node_ids || continue
         if _choice_margin(ps.nodes[node.id].left_logits) < margin_threshold
             return :ambiguous
         end
@@ -39,7 +41,9 @@ end
 
 function ambiguous_node_count(layer::EMLTreeLayer, ps; margin_threshold=0.0)
     ambiguous = 0
+    active_node_ids = _active_node_ids(snap_model(layer, ps; margin_threshold=margin_threshold))
     for node in layer.tree.nodes
+        node.id in active_node_ids || continue
         if _choice_margin(ps.nodes[node.id].left_logits) < margin_threshold || _choice_margin(ps.nodes[node.id].right_logits) < margin_threshold
             ambiguous += 1
         end
@@ -56,6 +60,10 @@ function _active_choices(tree::RecoveredTree)
     visited = Set{Int}()
     _collect_active_choices!(active, visited, tree, 1)
     return active
+end
+
+function _active_node_ids(tree::RecoveredTree)
+    return Set(keys(_active_choices(tree)))
 end
 
 function _collect_active_choices!(active, visited, tree::RecoveredTree, node_id::Int)

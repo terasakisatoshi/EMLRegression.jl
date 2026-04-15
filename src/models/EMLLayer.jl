@@ -13,8 +13,8 @@ end
 function Lux.initialparameters(rng::LehmerRNG, layer::EMLTreeLayer)
     node_params = Tuple(
         (
-            left_logits=zeros(Float64, length(node.left_candidates)),
-            right_logits=zeros(Float64, length(node.right_candidates)),
+            left_logits=0.01 .* randn(rng, Float64, length(node.left_candidates)),
+            right_logits=0.01 .* randn(rng, Float64, length(node.right_candidates)),
         ) for node in layer.tree.nodes
     )
     return (; nodes=node_params)

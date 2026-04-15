@@ -25,6 +25,7 @@ function load_cfg(path, target_name)
         batch_size=cfg["batch_size"],
         steps=cfg["steps"],
         learning_rate=get(cfg, "learning_rate", 1.0e-2),
+        complexity_weight=get(cfg, "complexity_weight", 0.0),
         hardening_steps=get(cfg, "hardening_steps", 0),
         hardening_start=get(cfg, "hardening_start", typemax(Int)),
         hardening_weight=get(cfg, "hardening_weight", 0.1),
