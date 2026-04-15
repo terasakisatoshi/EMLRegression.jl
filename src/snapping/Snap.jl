@@ -37,6 +37,20 @@ function snap_status(layer::EMLTreeLayer, ps; margin_threshold=0.0)
     return :ok
 end
 
+function ambiguous_node_count(layer::EMLTreeLayer, ps; margin_threshold=0.0)
+    ambiguous = 0
+    for node in layer.tree.nodes
+        if _choice_margin(ps.nodes[node.id].left_logits) < margin_threshold || _choice_margin(ps.nodes[node.id].right_logits) < margin_threshold
+            ambiguous += 1
+        end
+    end
+    return ambiguous
+end
+
+function structure_match(expected::RecoveredTree, actual::RecoveredTree)
+    return expected.choices == actual.choices
+end
+
 function _snap_choice(candidates, logits; margin_threshold=0.0)
     max_index = argmax(logits)
     return candidates[max_index]
