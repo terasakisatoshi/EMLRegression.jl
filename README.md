@@ -28,7 +28,7 @@
 - recursive EML tree の最小実装
 - node-wise snapping と recovered formula の出力
 - recovery 判定と smoke experiment
-- 実験設定ファイルと CLI
+- paper-aligned benchmark target suites と CLI
 - raw JSON と summary CSV の生成
 
 まだ本格化が必要なもの:
@@ -77,10 +77,10 @@
 
 ## 単発実験
 
-`ln` の smoke run:
+`depth2_double_exp` の smoke run:
 
 ```bash
-~/.juliaup/bin/julia --project=. scripts/run_experiment.jl --config experiments/configs/must_pass_depth2.toml --target ln --seed 1
+~/.juliaup/bin/julia --project=. scripts/run_experiment.jl --config experiments/configs/must_pass_depth2.toml --target depth2_double_exp --seed 1
 ```
 
 成功すると `results/raw/` に 1 本の JSON が出力されます。
@@ -130,9 +130,10 @@
 - `results/raw/*.json` は `config-target-seed` ごとに同じファイル名を使います。
 - そのため、同じ条件で再実行すると対応する raw JSON は上書きされます。
 - `scripts/summarize_results.jl` は、その時点で `results/raw/` に存在する JSON をすべて集計します。
-- raw JSON には recovered formula に加えて `snap_status` も保存されます。
+- raw JSON には `snap_status`, `structure_match`, `ambiguous_nodes`, `validation_loss` も保存されます。
+- summary CSV には `success_rate`, `ambiguous_rate`, `structure_match_rate`, `mean_validation_loss` が出ます。
 - 直近の 1 スイートだけを集計したい場合は、事前に `results/raw/` を退避するか整理してから実行してください。
-- 現在のベースラインでは `success_count = 0` が並ぶのが既知の状態です。解釈は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
+- 現在の paper-aligned baseline では `depth2_double_exp` のみ数値的 blind recovery が `5/5` で、構造一致はまだ `0/5` です。詳細は [First Baseline Report](./docs/first-baseline-report.md) を参照してください。
 
 ## ディレクトリ構成
 
@@ -196,6 +197,6 @@ docs/
 
 ## 現時点の注意
 
-- ベースラインは通るものの、blind recovery 成功率はまだ 0 のままです。
+- paper-aligned baseline では `depth2_double_exp` に数値的回復が出ていますが、深い target と構造一致は未達です。
 - 現状のモデルは研究用 scaffold としては成立していますが、論文の本格再現としては未完成です。
 - したがって、この README は「再現済み」の主張ではなく、「再現基盤と実験導線が揃っている」段階の説明です。

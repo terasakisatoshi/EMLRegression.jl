@@ -2,7 +2,7 @@
 
 ## Scope
 
-This baseline covers the current CPU-first reproduction scaffold for Section 4.3:
+This baseline covers the paper-aligned benchmark suites currently shipped in the CPU-first reproduction scaffold:
 
 - `must_pass_depth2`
 - `must_pass_depth3`
@@ -19,29 +19,38 @@ This baseline covers the current CPU-first reproduction scaffold for Section 4.3
 
 ## Observations
 
-- Raw JSON artifacts were produced successfully for all configured runs.
+- Raw JSON artifacts were produced successfully for all 15 configured runs.
 - Summary CSV was generated successfully at `results/summaries/summary.csv`.
-- Blind recovery success is currently `0` for every target and depth in this baseline.
+- The new summary now reports numerical recovery, ambiguity, and structure-match rates per target.
+
+## Current Baseline
+
+| suite | target | runs | success_rate | ambiguous_rate | structure_match_rate | mean_validation_loss |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `must_pass_depth2` | `depth2_double_exp` | 5 | 1.0 | 0.0 | 0.0 | 0.0 |
+| `must_pass_depth2` | `depth2_exp` | 5 | 0.0 | 0.0 | 0.0 | 1.0 |
+| `must_pass_depth3` | `depth3_log` | 3 | 0.0 | 0.0 | 0.0 | 9.6460 |
+| `challenge_depth4` | `depth4_nested` | 2 | 0.0 | 1.0 | 0.0 | 37.8314 |
 
 ## Expected Reason For Failure
 
-This is consistent with the current implementation stage:
+This is still consistent with the current implementation stage:
 
-- the `Lux` model is still a minimal structural placeholder,
-- the training loop logs losses but does not yet perform meaningful gradient-based parameter updates,
-- snapping always collapses to a trivial terminal choice,
-- exported recovered formulas are therefore trivial and do not match the targets.
+- the model can now recover the easiest numerical target, but exact snapped structure recovery is still absent,
+- depth 3 and depth 4 targets still fall outside the current optimization basin,
+- ambiguity remains unresolved on the hardest suite,
+- exported formulas show repeated near-miss trees rather than the target trees themselves.
 
 ## Current Bottlenecks
 
-1. The EML tree model does not yet represent the paper's full master-formula choice structure.
-2. The training loop needs real optimization, not metric-only passes.
-3. Snapping needs ambiguity handling and structured tree reconstruction.
-4. Recovery should validate the snapped tree, not the pre-snap placeholder forward path only.
+1. Numerical recovery can happen without structure recovery, so the snapping objective is still too weak.
+2. The depth-3 and depth-4 targets need stronger optimization or better hardening schedules.
+3. Ambiguous node selections remain common on the challenge suite.
+4. The current benchmark family is paper-aligned, but the observed rates are still far from the paper's reported depth scaling.
 
 ## Next Implementation Priorities
 
-1. Replace the placeholder forward model with per-node branch-choice logits.
-2. Add real optimizer updates and a distinct hardening objective.
-3. Rebuild snapped trees into readable multi-node EML formulas.
-4. Re-run the same suites and compare success-rate changes against this baseline.
+1. Close the gap between numerical success and exact structure recovery on `must_pass_depth2`.
+2. Improve hardening and snapping so `challenge_depth4` no longer stays fully ambiguous.
+3. Raise `must_pass_depth3` above `0/3` before expanding the benchmark family further.
+4. Re-run the same suites and compare all four reported rates against this baseline.
