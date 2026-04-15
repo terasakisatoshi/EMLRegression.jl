@@ -26,3 +26,11 @@ end
 if should_run("snapping")
     include("snapping/test_snap.jl")
 end
+
+if should_run("eval")
+    include("eval/test_recovery.jl")
+end
+
+if should_run("integration")
+    include("integration/test_smoke_ln.jl")
+end

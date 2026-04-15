@@ -9,6 +9,8 @@ include("training/TrainLoop.jl")
 include("targets/TargetRegistry.jl")
 include("snapping/Snap.jl")
 include("symbolics/Export.jl")
+include("eval/Metrics.jl")
+include("eval/Recovery.jl")
 
 export eml
 export MasterTree
@@ -30,6 +32,10 @@ export RecoveredTree
 export snap_logits
 export snap_model
 export formula_string
+export RecoveryVerdict
+export recovery_verdict
+export numerical_match
+export run_experiment
 
 eml(x, y) = exp.(x) .- log.(y)
 

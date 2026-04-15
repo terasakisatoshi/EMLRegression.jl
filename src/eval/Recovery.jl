@@ -1,0 +1,25 @@
+using StableRNGs: StableRNG
+
+function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
+    training = run_training(cfg; rng=rng)
+    target = get_target(cfg.target)
+    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=(:x,)))
+    recovered = snap_model(layer, training.params)
+
+    xs = sample_domain(target, cfg.batch_size; rng_seed=cfg.steps + 1)
+    ys = evaluate_target(target, xs)
+    preds, _ = Lux.apply(layer, xs, training.params, training.state)
+
+    verdict = recovery_verdict(
+        train_loss=isempty(training.metrics[:train_loss]) ? Inf : training.metrics[:train_loss][end],
+        validation_loss=_mse(preds, ys),
+        snap_status=:ok,
+        numerical_match=numerical_match(preds, ys),
+    )
+
+    return (
+        training=training,
+        recovery=verdict,
+        recovered_tree=recovered,
+    )
+end
