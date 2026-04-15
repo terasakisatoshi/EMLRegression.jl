@@ -7,6 +7,8 @@ include("training/Stability.jl")
 include("training/TrainConfig.jl")
 include("training/TrainLoop.jl")
 include("targets/TargetRegistry.jl")
+include("snapping/Snap.jl")
+include("symbolics/Export.jl")
 
 export eml
 export MasterTree
@@ -24,6 +26,10 @@ export TargetSpec
 export get_target
 export sample_domain
 export evaluate_target
+export RecoveredTree
+export snap_logits
+export snap_model
+export formula_string
 
 eml(x, y) = exp.(x) .- log.(y)
 

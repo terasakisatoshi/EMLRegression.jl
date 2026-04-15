@@ -22,3 +22,7 @@ end
 if should_run("targets")
     include("targets/test_targets.jl")
 end
+
+if should_run("snapping")
+    include("snapping/test_snap.jl")
+end
