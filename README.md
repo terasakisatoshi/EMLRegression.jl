@@ -212,3 +212,4 @@ docs/
 - paper-aligned baseline では `must_pass_depth2` の数値的一致と構造一致は出ています。depth 4 までは tuned blind recovery が入り、depth 5 は basin では回復しますが blind recovery は未達、depth 6 は negative control です。
 - 現状のモデルは研究用 scaffold としては成立していますが、論文の本格再現としては未完成です。
 - したがって、この README は「再現済み」の主張ではなく、「再現基盤と実験導線が揃っている」段階の説明です。
+# EMLRegression.jl
