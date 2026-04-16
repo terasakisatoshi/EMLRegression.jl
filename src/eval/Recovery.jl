@@ -16,6 +16,7 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     recovered = search_recovered_tree(layer, training.params, master_tree, xs, ys)
     recovered_snap_status = snap_status(layer, training.params; margin_threshold=cfg.margin_threshold)
     ambiguous_nodes = ambiguous_node_count(layer, training.params; margin_threshold=cfg.margin_threshold)
+    diagnostics = snap_diagnostics(layer, training.params; margin_threshold=cfg.margin_threshold)
     preds = evaluate_recovered(recovered, master_tree, xs)
     validation_loss = _mse(preds, ys)
 
@@ -27,6 +28,7 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
         ambiguous_nodes=ambiguous_nodes,
         numerical_match=numerical_match(preds, ys),
         training_failure_reason=training.failure_reason,
+        snap_diagnostics=diagnostics,
     )
 
     return (

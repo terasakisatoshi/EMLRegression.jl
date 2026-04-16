@@ -12,6 +12,7 @@ struct RecoveryVerdict
     validation_loss::Float64
     numerical_match::Bool
     training_failure_reason::Symbol
+    snap_diagnostics
 end
 
 """
@@ -19,7 +20,7 @@ end
 
 学習結果と snapping 結果から、snapped tree が厳密に回復できたかを判定します。
 """
-function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match, training_failure_reason=no_failure)
+function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match, training_failure_reason=no_failure, snap_diagnostics=NamedTuple[])
     success = training_failure_reason == no_failure && snap_status == :ok && structure_match && numerical_match
     reason = if training_failure_reason != no_failure
         Symbol(string(training_failure_reason))
@@ -39,6 +40,7 @@ function recovery_verdict(; train_loss, validation_loss, snap_status, structure_
         validation_loss,
         numerical_match,
         Symbol(string(training_failure_reason)),
+        snap_diagnostics,
     )
 end
 

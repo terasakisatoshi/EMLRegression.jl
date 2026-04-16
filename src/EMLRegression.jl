@@ -41,6 +41,7 @@ export evaluate_target
 export RecoveredTree
 export snap_logits
 export snap_model
+export snap_diagnostics
 export search_recovered_tree
 export refine_recovered_tree
 export evaluate_recovered

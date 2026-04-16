@@ -28,6 +28,8 @@ end
     @test haskey(outcome, :recovery)
     @test haskey(outcome.recovered_tree.choices, 1)
     @test outcome.recovery.snap_status in (:ok, :ambiguous)
+    @test hasproperty(outcome.recovery, :snap_diagnostics)
+    @test !isempty(outcome.recovery.snap_diagnostics)
 end
 
 @testset "must_pass_depth2 config recovers the easiest target" begin
@@ -271,5 +273,29 @@ end
         @test config_names == ["depth2_sweep-lr010", "depth2_sweep-lr020"]
         strategies = sort([String(row[:init_strategy]) for row in rows])
         @test strategies == ["small_gaussian", "subtree_favoring"]
+    end
+end
+
+@testset "raw experiment results include snap diagnostics" begin
+    repo_root = normpath(joinpath(@__DIR__, "..", ".."))
+    experiment_script = joinpath(repo_root, "scripts", "run_experiment.jl")
+    mktempdir() do dir
+        raw_dir = joinpath(dir, "results", "raw")
+        mkpath(raw_dir)
+
+        run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(experiment_script) --config $(joinpath(repo_root, "experiments", "configs", "must_pass_depth2.toml")) --target depth2_exp --seed 1`; dir=dir))
+
+        paths = filter(p -> endswith(p, ".json"), readdir(raw_dir; join=true))
+        @test length(paths) == 1
+
+        row = JSON3.read(read(only(paths), String))
+        @test haskey(row, :snap_diagnostics)
+        @test length(row[:snap_diagnostics]) >= 1
+        diag = row[:snap_diagnostics][1]
+        @test haskey(diag, :node_id)
+        @test haskey(diag, :left_margin)
+        @test haskey(diag, :right_margin)
+        @test haskey(diag, :min_margin)
+        @test haskey(diag, :ambiguous)
     end
 end

@@ -69,6 +69,18 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "snap_status" => String(outcome.recovery.snap_status),
         "structure_match" => outcome.recovery.structure_match,
         "ambiguous_nodes" => outcome.recovery.ambiguous_nodes,
+        "snap_diagnostics" => [
+            Dict(
+                "node_id" => diag.node_id,
+                "left_choice" => String(diag.left_choice),
+                "right_choice" => String(diag.right_choice),
+                "left_margin" => diag.left_margin,
+                "right_margin" => diag.right_margin,
+                "min_margin" => diag.min_margin,
+                "ambiguous" => diag.ambiguous,
+            )
+            for diag in outcome.recovery.snap_diagnostics
+        ],
         "validation_loss" => outcome.recovery.validation_loss,
         "numerical_match" => outcome.recovery.numerical_match,
         "training_failure_reason" => String(outcome.recovery.training_failure_reason),

@@ -130,6 +130,28 @@ function ambiguous_node_count(layer::EMLTreeLayer, ps; margin_threshold=0.0)
     return ambiguous
 end
 
+function snap_diagnostics(layer::EMLTreeLayer, ps; margin_threshold=0.0)
+    tree = snap_model(layer, ps; margin_threshold=margin_threshold)
+    diagnostics = NamedTuple[]
+    for node_id in sort!(collect(_active_node_ids(tree)))
+        left_choice, right_choice = tree.choices[node_id]
+        node_ps = ps.nodes[node_id]
+        left_margin = _choice_margin(node_ps.left_logits)
+        right_margin = _choice_margin(node_ps.right_logits)
+        min_margin = min(left_margin, right_margin)
+        push!(diagnostics, (
+            node_id=node_id,
+            left_choice=left_choice,
+            right_choice=right_choice,
+            left_margin=left_margin,
+            right_margin=right_margin,
+            min_margin=min_margin,
+            ambiguous=left_margin < margin_threshold || right_margin < margin_threshold,
+        ))
+    end
+    return diagnostics
+end
+
 function structure_match(expected::RecoveredTree, actual::RecoveredTree)
     return _active_choices(expected) == _active_choices(actual)
 end
@@ -181,21 +203,31 @@ end
 
 function _top_k_neighbors(tree::RecoveredTree, layer::EMLTreeLayer, ps; top_k::Int)
     neighbors = RecoveredTree[]
-    for node_id in sort!(collect(_active_node_ids(tree)))
+    for entry in _ranked_active_sides(tree, layer, ps)
+        node_id = entry.node_id
+        side = entry.side
         node = layer.tree.nodes[node_id]
         node_ps = ps.nodes[node_id]
-        for (side, symbols) in (
-            (:left, _top_k_symbols(node.left_candidates, node_ps.left_logits, top_k)),
-            (:right, _top_k_symbols(node.right_candidates, node_ps.right_logits, top_k)),
-        )
-            current_symbol = side === :left ? tree.choices[node_id][1] : tree.choices[node_id][2]
-            for symbol in symbols
-                symbol == current_symbol && continue
-                push!(neighbors, _with_symbol_choice(tree, node_id, side, symbol))
-            end
+        candidates = side === :left ? node.left_candidates : node.right_candidates
+        logits = side === :left ? node_ps.left_logits : node_ps.right_logits
+        current_symbol = side === :left ? tree.choices[node_id][1] : tree.choices[node_id][2]
+        for symbol in _top_k_symbols(candidates, logits, top_k)
+            symbol == current_symbol && continue
+            push!(neighbors, _with_symbol_choice(tree, node_id, side, symbol))
         end
     end
     return neighbors
+end
+
+function _ranked_active_sides(tree::RecoveredTree, layer::EMLTreeLayer, ps)
+    sides = NamedTuple[]
+    for node_id in sort!(collect(_active_node_ids(tree)))
+        node_ps = ps.nodes[node_id]
+        push!(sides, (node_id=node_id, side=:left, margin=_choice_margin(node_ps.left_logits)))
+        push!(sides, (node_id=node_id, side=:right, margin=_choice_margin(node_ps.right_logits)))
+    end
+    sort!(sides; by=entry -> (entry.margin, entry.node_id, entry.side === :left ? 0 : 1))
+    return sides
 end
 
 function _top_k_symbols(candidates, logits, top_k::Int)

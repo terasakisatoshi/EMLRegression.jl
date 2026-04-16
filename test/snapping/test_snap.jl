@@ -63,6 +63,49 @@ end
     @test EMLRegression.ambiguous_node_count(layer, ps; margin_threshold=0.5) == 0
 end
 
+@testset "snap diagnostics report active bottleneck margins" begin
+    tree = build_master_tree(depth=2, variables=(:x,))
+    layer = EMLTreeLayer(tree)
+    ps = (
+        nodes=(
+            (left_logits=[0.0, 0.2, 0.4], right_logits=[0.8, 0.7, 0.1]),
+            (left_logits=[0.9, 0.6], right_logits=[0.3, 0.2]),
+            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
+        ),
+    )
+
+    diagnostics = EMLRegression.snap_diagnostics(layer, ps; margin_threshold=0.15)
+
+    @test length(diagnostics) == 2
+    @test diagnostics[1].node_id == 1
+    @test diagnostics[1].left_choice == :node_2
+    @test diagnostics[1].right_choice == :const1
+    @test diagnostics[1].left_margin ≈ 0.2
+    @test diagnostics[1].right_margin ≈ 0.1
+    @test diagnostics[1].min_margin ≈ 0.1
+    @test diagnostics[1].ambiguous
+    @test diagnostics[2].node_id == 2
+end
+
+@testset "margin-aware neighbors expand the lowest-margin side first" begin
+    tree = build_master_tree(depth=2, variables=(:x,))
+    layer = EMLTreeLayer(tree)
+    ps = (
+        nodes=(
+            (left_logits=[0.5, 0.1, 1.0], right_logits=[1.0, 0.0, 0.2]),
+            (left_logits=[1.0, 0.0], right_logits=[1.0, 0.95]),
+            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
+        ),
+    )
+    tree0 = snap_model(layer, ps)
+
+    neighbors = EMLRegression._top_k_neighbors(tree0, layer, ps; top_k=2)
+
+    @test !isempty(neighbors)
+    @test neighbors[1].choices[2][2] != tree0.choices[2][2]
+    @test neighbors[1].choices[1] == tree0.choices[1]
+end
+
 @testset "refine_recovered_tree prefers lower-complexity equivalent structure" begin
     tree = build_master_tree(depth=3, variables=(:x,))
     target = get_target(:depth3_log)
