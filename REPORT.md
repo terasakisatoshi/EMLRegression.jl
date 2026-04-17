@@ -1,19 +1,25 @@
 # Section 4.3 Faithful Rewrite Report
 
 Date: 2026-04-17
-Branch: `section-4-3-faithful-rewrite`
-Worktree: `.worktrees/section-4-3-faithful-rewrite`
+Branch: `report-remaining-work`
+Worktree: `.worktrees/report-remaining-work`
 
 ## Summary
 
-Section 4.3 faithful rewrite is in place as the main implementation direction. The old choice-logit tree path has been replaced by a PyTorch-v16-style `EMLTree` core with paper-aligned targets, search/hardening training, paper-style snapping, and paper-style recovery metrics.
+Section 4.3 faithful rewrite remains the main implementation direction. The old choice-logit tree path has been replaced by a PyTorch-v16-style `EMLTree` core with paper-aligned targets, search/hardening training, paper-style snapping, and paper-style recovery metrics.
 
-The main blocking bug found during sweep work was a Zygote tuple-gradient failure in `depth4 random_hot`. That structural autodiff failure is now fixed. The remaining issue is numerical stability under wider paper-style domains and random-hot initialization.
+The latest blocker on `main` was a paper-budget training failure, not a modeling mismatch. Full `6000/2000` hardening could hit a Zygote shape error after the gates had already become highly saturated. That blocker is now fixed in this worktree.
 
-Since the original report snapshot, two paper-style stabilization steps have been added:
+Current work is in the measurement phase. A full paper-style sweep is running with:
 
-- paper-style nonfinite restart accounting in the training loop
-- paper-style `_BYPASS_THR` blending and gradient clipping
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_paper_headless_sweep.jl --jobs depth2,depth3,depth4,depth5_random,depth6_random,depth5_manual_noise12,depth6_manual_noise12
+```
+
+At the time of this report update, the sweep is still in progress. The strongest confirmed tendencies so far are:
+
+- `depth2`: `32/32` fit and symbolic successes across the four random-start families
+- `depth3`: strong instability remains under the current Julia dynamics, with `biased 0/16` completed so far and heavy nonfinite/restart activity
 
 ## What Was Done
 
@@ -28,9 +34,9 @@ Since the original report snapshot, two paper-style stabilization steps have bee
 
 Relevant files:
 
-- [src/models/EMLLayer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/models/EMLLayer.jl:1)
-- [src/EMLRegression.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/EMLRegression.jl:1)
-- [test/models/test_eml_layer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/test/models/test_eml_layer.jl:1)
+- [src/models/EMLLayer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/models/EMLLayer.jl:1)
+- [src/EMLRegression.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/EMLRegression.jl:1)
+- [test/models/test_eml_layer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/models/test_eml_layer.jl:1)
 
 ### 2. Paper-Aligned Targets / Training / Recovery
 
@@ -47,132 +53,166 @@ Relevant files:
 
 Relevant files:
 
-- [src/targets/TargetRegistry.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/targets/TargetRegistry.jl:1)
-- [src/training/TrainConfig.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/training/TrainConfig.jl:1)
-- [src/training/TrainLoop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/training/TrainLoop.jl:1)
-- [src/snapping/Snap.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/snapping/Snap.jl:1)
-- [src/eval/Metrics.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/eval/Metrics.jl:1)
-- [src/eval/Recovery.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/eval/Recovery.jl:1)
-- [scripts/run_experiment.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/scripts/run_experiment.jl:1)
-- [scripts/run_suite.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/scripts/run_suite.jl:1)
-- [scripts/summarize_results.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/scripts/summarize_results.jl:1)
-- [scripts/run_paper_headless_sweep.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/scripts/run_paper_headless_sweep.jl:1)
+- [src/targets/TargetRegistry.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/targets/TargetRegistry.jl:1)
+- [src/training/TrainConfig.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/training/TrainConfig.jl:1)
+- [src/training/TrainLoop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/training/TrainLoop.jl:1)
+- [src/snapping/Snap.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/snapping/Snap.jl:1)
+- [src/eval/Metrics.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/eval/Metrics.jl:1)
+- [src/eval/Recovery.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/eval/Recovery.jl:1)
+- [scripts/run_experiment.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_experiment.jl:1)
+- [scripts/run_suite.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_suite.jl:1)
+- [scripts/summarize_results.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/summarize_results.jl:1)
+- [scripts/run_paper_headless_sweep.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_paper_headless_sweep.jl:1)
 
-## Tuple-Gradient Bug Investigation
+## Gradient / Hardening Bug Investigation
 
 ### Symptom
 
-The reduced paper-style sweep exposed a reproducible failure in `depth4 random_hot` on the paper-style domain `1.0:0.1:3.0`.
+The reduced paper-style sweep first exposed a structural failure in `depth4 random_hot`, and the later full paper-budget run exposed a second blocker in `depth2 biased`.
 
-Reproducer:
+Reduced-budget reproducer:
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/run_experiment.jl --config /tmp/depth4_random_hot.toml --target eml_depth4 --seed 137
 ```
 
-Observed error:
+Observed reduced-budget error:
 
 - Zygote `MethodError: no method matching -(::Nothing)`
 - This occurred during backprop through the `EMLTree` forward path.
 
+Paper-budget reproducer:
+
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_experiment.jl --config /tmp/pnas_d2_random-biased.toml --target eml_depth2 --seed 137
+```
+
+Observed paper-budget error:
+
+- Zygote `DimensionMismatch`
+- This occurred late in hardening, after the gate probabilities had already become highly saturated.
+
 ### Root Cause
 
-The original faithful rewrite returned diagnostics from the forward pass in a way that caused Zygote to build tangents containing `Nothing` inside complex array gradients. The failure was structural, not just a bad loss term.
+The original faithful rewrite returned diagnostics from the forward pass in a way that caused Zygote to build tangents containing `Nothing` inside complex array gradients. After that path was stabilized, a second issue remained: the level-update implementation still used a shape-sensitive gradient path that broke at paper budget once hardening had saturated the gates.
 
-The problematic path was:
+The problematic paths were:
 
 - multi-level forward collection logic
 - complex broadcast differentiation through `eml`
 - mixed tangent propagation where `Nothing` was not normalized away
+- late-hardening level updates through per-column tuple assembly
 
 ### Fixes Applied
 
 1. Reworked `EMLTree` forward evaluation to avoid the earlier recursive / mutation-heavy output collection path.
-2. Flattened `eml_outputs` handling in the loss path so intermediate penalties operate on a simple vector.
-3. Added a custom reverse rule for `eml` in [src/EMLRegression.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/EMLRegression.jl:56) that coerces `nothing` tangents to zero.
-4. Locked in a regression test that asserts the training call returns normally for the formerly crashing case.
+2. Split training-time evaluation into a dedicated `forward_with_regularizers` path that computes scalar regularizers directly instead of differentiating through aux collection.
+3. Replaced the per-column level update path with matrix-wise blending and matrix-wise `eml` evaluation.
+4. Rewrote `_complex_blend(::AbstractMatrix, ...)` as pure broadcast so Zygote no longer hits mutation-sensitive adjoints.
+5. Flattened `eml_outputs` handling in the loss path so intermediate penalties operate on a simple vector.
+6. Locked in regression tests for the formerly crashing training state and the paper-budget saturated-gate reproducer.
 
-Regression test:
+Regression tests:
 
-- [test/training/test_train_loop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/test/training/test_train_loop.jl:60)
+- [test/training/test_train_loop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/training/test_train_loop.jl:1)
+- [test/models/test_eml_layer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/models/test_eml_layer.jl:1)
+
+Commit:
+
+- `03d9b73 fix: unblock paper-budget hardening gradients`
 
 ## Current State
 
 ### Verified
 
-Fresh verification commands run successfully:
+Fresh verification command run successfully:
 
 ```bash
 ~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training"])'
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
 What that means:
 
 - the structural tuple-gradient crash is fixed
-- the rewrite test suite is green
-- the paper headless sweep runner smoke test passes
+- the paper-budget hardening crash is fixed
+- the training test suite is green
 
 Additional regression coverage now exists for:
 
 - nonfinite search steps incrementing restart counters instead of aborting immediately
-- exact-one gate bypass behavior in `_complex_blend`
-- nested gradient clipping to max norm `1.0`
+- exact-one and saturated-gate blend behavior in `_complex_blend`
+- paper-budget saturated gates remaining differentiable
 
-### Not Yet Solved
+### Partial Full-Sweep Results
 
-`depth4 random_hot` no longer crashes, but it can still terminate immediately with `failure_reason == nonfinite_detected`.
+The full sweep is still running. Confirmed partial results at this report snapshot:
 
-Current diagnosis:
+- `pnas_d2_random-biased`: `8/8` fit, `8/8` symbolic, `4/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
+- `pnas_d2_random-uniform`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
+- `pnas_d2_random-xy_biased`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
+- `pnas_d2_random-random_hot`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-biased`: `0/16` fit, `0/16` symbolic, `0/16` stable symbolic, cumulative `nonfinite_steps=1546`, cumulative `nan_restarts=23`
+- `pnas_d3_random-uniform`: `0/4` fit, `0/4` symbolic, `0/4` stable symbolic, cumulative `nonfinite_steps=347`, cumulative `nan_restarts=5`
 
-- initial predictions remain finite
-- intermediate outputs remain finite
-- but the paper-style wide-domain random-hot initialization can produce very large finite outputs
-- the resulting MSE overflows to `Inf`
-- Julia currently treats this as immediate failure
+This already shows one match and one mismatch versus the external PyTorch reference:
 
-This is now a numerical stability gap, not an autodiff bug.
+- match: `depth2` random discovery is effectively solved
+- mismatch: `depth3` is currently underperforming the PyTorch README expectation of `17/64`
 
-After adding restart logic, `_BYPASS_THR`, and gradient clipping, the reduced Julia sweep on `depth2,depth3,depth4` with `--search-iters 50 --hardening-iters 20 --seeds 1` still shows:
+### Reduced Sweep Check
 
-- `depth4 random_hot`: `failure_reason=no_failure`, `nan_restarts=1`, `nonfinite_steps=70`
-- all other reduced jobs: `nan_restarts=0`, `nonfinite_steps=0`
-- all reduced jobs in this short sweep: `fit_success=false`, `stable_symbol_success=false`
+Reduced paper-style sweep run:
 
-So the current bottleneck is not the hard crash path anymore. It is overflow-prone optimization dynamics on the wide-domain `depth4 random_hot` case.
+```bash
+~/.juliaup/bin/julia --project=. scripts/run_paper_headless_sweep.jl --jobs depth2,depth3,depth4 --search-iters 5 --hardening-iters 2 --seeds 1
+```
+
+Observed raw diagnostics:
+
+- 12 raw artifacts were written, one per depth/init-strategy combination for depths 2, 3, and 4.
+- `depth4 random_hot` was the only reduced job that reported nonfinite activity: `nonfinite_steps=7`, `nan_restarts=0`, `failure_reason=no_failure`.
+- Every other reduced job reported `nan_restarts=0` and `nonfinite_steps=0`.
+- None of the reduced jobs reached `fit_success` or `stable_symbol_success` under the shortened iteration budget.
+
+This confirmed the runner propagates the reduced-sweep overrides correctly, and justified moving on to the full paper-style sweep.
 
 ## Remaining Work
 
-### Priority 1: Paper-Style Nonfinite Handling
+### Priority 1: Finish The Full Sweep
 
-Mirror the PyTorch-v16 behavior more closely in [src/training/TrainLoop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-faithful-rewrite/src/training/TrainLoop.jl:1):
+Let the current full paper-style sweep complete, then summarize it with:
 
-- implement `nan_streak`
-- implement `nan_restart_patience`
-- implement `max_nan_restarts`
-- reload best soft state on repeated nonfinite steps
-- continue training instead of aborting immediately on the first nonfinite loss
+```bash
+~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
+```
 
-This is the largest remaining gap between current Julia behavior and the external reference.
+The main deliverable is the measured tendency table for:
+
+- `depth2`
+- `depth3`
+- `depth4`
+- `depth5_random`
+- `depth6_random`
+- `depth5_manual_noise12`
+- `depth6_manual_noise12`
 
 ### Priority 2: Numerical Stabilization Alignment
 
 Match the PyTorch implementation more closely in the forward / optimization path:
 
-- re-check the already added bypass threshold behavior equivalent to `_BYPASS_THR`
-- re-check the already added gradient clipping equivalent to `clip_grad_norm_(..., 1.0)`
-- re-check clamp behavior and loss overflow behavior under paper domains
-- re-evaluate whether `eml_clamp=1e300` should remain the default for Julia runs without more aggressive restart logic
-- inspect whether Julia `MSE` overflow is happening before restart logic can provide enough benefit
+- investigate why `depth3` is still showing large nonfinite/restart pressure under the paper budget
+- compare hardening dynamics and temperature schedule against the PyTorch implementation
+- inspect whether the current Julia objective is still too brittle once gates saturate
+- re-evaluate clamp and restart thresholds if `depth4+` continue to underperform after the first full measurement
 
 ### Priority 3: Sweep Measurement
 
-After the nonfinite/restart path is implemented:
+After the current sweep finishes:
 
-1. rerun reduced `depth2,depth3,depth4` sweep
-2. inspect raw JSON outputs for recovery tendency
-3. expand to `depth5_random`, `depth6_random`, and manual-noise jobs
-4. compare the observed recovery pattern against the PyTorch README and Supplementary expectations
+1. rebuild `results/summaries/summary.csv`
+2. compare each family against the PyTorch README / Supplementary tendencies
+3. update this report with completed counts instead of partial counts
+4. decide whether the next pass should target `depth3` stability specifically or move directly to `depth4+`
 
 ## Files Changed So Far
 
@@ -197,6 +237,6 @@ After the nonfinite/restart path is implemented:
 
 ## Bottom Line
 
-The rewrite has crossed the main structural milestone: the new Section 4.3 core is in place, and the tuple-gradient failure that blocked paper-style sweep work is fixed.
+The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The next milestone is numerical: make nonfinite handling and restart behavior paper-compatible enough that `depth 2-6` recovery tendencies can be measured rather than failing early on wide-domain random initializations.
+The next milestone is empirical: finish the full sweep, record the depth-wise recovery tendency, and then focus the next stabilization pass on the still-weak `depth3+` behavior.
