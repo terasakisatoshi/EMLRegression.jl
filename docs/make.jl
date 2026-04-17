@@ -29,6 +29,8 @@ makedocs(;
         "学習チュートリアル" => "training-tutorial.md",
         "発展: 低レベル学習 API" => "advanced-training.md",
         "論文の要点と解説" => "paper.md",
+        "Section 4.3 との差分整理" => "section-4-3-gap.md",
+        "Section 4.3 の一次情報一覧" => "section-4-3-sources.md",
         "API リファレンス" => "api.md",
     ],
 )

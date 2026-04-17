@@ -318,7 +318,7 @@ version = "1.7.0"
 
 [[deps.EMLRegression]]
 deps = ["CSV", "ChainRulesCore", "ComponentArrays", "DataFrames", "JSON3", "Lux", "Optimisers", "StableRNGs", "TOML", "Zygote"]
-path = "/Users/terasaki/tmp/eml/docs/.."
+path = "/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/docs/.."
 uuid = "366154f3-20ce-4abb-a660-2d583e8bae5e"
 version = "0.1.0"
 

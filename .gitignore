@@ -7,3 +7,5 @@
 !/results/figures/.gitkeep
 /tmp/
 /.worktrees/
+extern
+external

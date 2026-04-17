@@ -18,6 +18,10 @@
   `MasterTree`、`EMLTreeLayer`、`Lux.setup`、`Lux.apply` を直接触ります。
 - [論文の要点と解説](paper.md)
   論文全体の狙いと、このリポジトリが担当している範囲を日本語で整理しています。
+- [Section 4.3 との差分整理](section-4-3-gap.md)
+  論文の Section 4.3 と現実装がどこで一致し、どこで意図的にずれているかを整理しています。
+- [Section 4.3 の一次情報一覧](section-4-3-sources.md)
+  Supplementary Information、Zenodo snapshot、EML toolkit など、忠実化のために当たる一次情報をまとめています。
 - [API リファレンス](api.md)
   公開 API の要点をまとめています。
 
