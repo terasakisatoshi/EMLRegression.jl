@@ -1,224 +1,108 @@
 using Test
 using StableRNGs
-using Lux
 using EMLRegression
 
-@testset "training loop" begin
-    cfg = TrainConfig(depth=2, target=:ln, batch_size=32, steps=3, learning_rate=1e-2)
-    result = run_training(cfg; rng=StableRNG(1))
-    @test haskey(result.metrics, :train_loss)
-    @test haskey(result.metrics, :logit_margin)
-    @test haskey(result.metrics, :max_node_abs)
-    @test length(result.metrics[:train_loss]) == 3
-    @test any(!iszero, result.metrics[:train_loss])
-    @test result.params.nodes[1].left_logits != zeros(length(result.params.nodes[1].left_logits))
-end
-
-@testset "hardening sharpens selections" begin
+@testset "search and hardening schedule transitions" begin
     cfg = TrainConfig(
+        target=:eml_depth2,
         depth=2,
-        target=:ln,
-        batch_size=32,
-        steps=4,
-        hardening_steps=3,
-        hardening_start=3,
-        hardening_weight=0.5,
-        learning_rate=1e-2,
+        search_iters=20,
+        hardening_iters=10,
+        eval_every=5,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
     )
     result = run_training(cfg; rng=StableRNG(1))
-    @test !isempty(result.metrics[:hardening_loss])
-    @test length(result.metrics[:logit_margin]) == cfg.steps + cfg.hardening_steps
-    @test result.metrics[:hardening_loss] != fill(cfg.hardening_weight, cfg.hardening_steps)
-    @test result.metrics[:logit_margin][end] > result.metrics[:logit_margin][1]
+    @test haskey(result.metrics, :soft_rmse)
+    @test haskey(result.metrics, :hard_rmse)
+    @test haskey(result.metrics, :tau)
+    @test result.summary[:hardening_iter] !== nothing
+    @test length(result.metrics[:soft_rmse]) > 0
 end
 
-@testset "hardening defaults to the final steps" begin
+@testset "training loop records finite losses on paper-aligned target" begin
     cfg = TrainConfig(
+        target=:eml_depth2,
         depth=2,
-        target=:ln,
-        batch_size=32,
-        steps=4,
-        hardening_steps=3,
-        learning_rate=1e-2,
+        search_iters=10,
+        hardening_iters=5,
+        eval_every=5,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
     )
     result = run_training(cfg; rng=StableRNG(1))
-    @test length(result.metrics[:hardening_loss]) == cfg.hardening_steps
+    @test all(isfinite, result.metrics[:soft_rmse])
+    @test all(isfinite, result.metrics[:tau])
 end
 
-@testset "margin regularization increases logit separation" begin
-    base_cfg = TrainConfig(
-        depth=2,
-        target=:ln,
-        batch_size=32,
-        steps=20,
-        learning_rate=1e-2,
-    )
-    regularized_cfg = TrainConfig(
-        depth=2,
-        target=:ln,
-        batch_size=32,
-        steps=20,
-        learning_rate=1e-2,
-        margin_penalty_weight=2.0,
-        margin_target=1.0,
-    )
-
-    baseline = run_training(base_cfg; rng=StableRNG(1))
-    regularized = run_training(regularized_cfg; rng=StableRNG(1))
-
-    @test !isempty(regularized.metrics[:margin_penalty_loss])
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    @test EMLRegression._margin_penalty(layer, regularized.params; target_margin=1.0) <
-          EMLRegression._margin_penalty(layer, baseline.params; target_margin=1.0)
-end
-
-@testset "active-node margin penalty ignores inactive ambiguous nodes" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    ps = (
-        nodes=(
-            (left_logits=[8.0, -8.0, -8.0], right_logits=[8.0, -8.0, -8.0]),
-            (left_logits=[0.1, 0.0], right_logits=[0.1, 0.0]),
-            (left_logits=[0.1, 0.0], right_logits=[0.1, 0.0]),
-        ),
-    )
-
-    @test EMLRegression._margin_penalty(layer, ps; target_margin=1.0) == 0.0
-end
-
-@testset "complexity penalty prefers simpler selections" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    simple = (
-        nodes=(
-            (left_logits=[8.0, -8.0, -8.0], right_logits=[8.0, -8.0, -8.0]),
-            (left_logits=[8.0, -8.0], right_logits=[8.0, -8.0]),
-            (left_logits=[8.0, -8.0], right_logits=[8.0, -8.0]),
-        ),
-    )
-    complex = (
-        nodes=(
-            (left_logits=[-8.0, 8.0, -8.0], right_logits=[-8.0, -8.0, 8.0]),
-            (left_logits=[-8.0, 8.0], right_logits=[-8.0, 8.0]),
-            (left_logits=[-8.0, 8.0], right_logits=[-8.0, 8.0]),
-        ),
-    )
-    @test EMLRegression._complexity_penalty(layer, simple) < EMLRegression._complexity_penalty(layer, complex)
-end
-
-@testset "autodiff gradient matches parameter tree" begin
-    rng = StableRNG(1)
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    ps, st = Lux.setup(rng, layer)
-    xs = ComplexF64.([0.3, 0.7, 1.1])
-    ys = eml(xs, fill(1.0 + 0.0im, length(xs)))
-
-    grads = EMLRegression._autodiff_gradient(ps) do ps_current
-        preds, _ = Lux.apply(layer, xs, ps_current, st)
-        EMLRegression._mse(preds, ys)
-    end
-
-    @test length(grads.nodes) == length(ps.nodes)
-    @test length(grads.nodes[1].left_logits) == length(ps.nodes[1].left_logits)
-    @test length(grads.nodes[1].right_logits) == length(ps.nodes[1].right_logits)
-    @test any(!iszero, grads.nodes[1].left_logits)
-    @test any(!iszero, grads.nodes[1].right_logits)
-end
-
-@testset "training loop clamps model outputs before recording metrics" begin
+@testset "training accepts manual expression initialization" begin
     cfg = TrainConfig(
+        target=:eml_depth2,
         depth=2,
-        target=:depth2_exp,
-        batch_size=32,
-        steps=3,
-        learning_rate=1e-2,
-        stability_limit=0.25,
+        init_strategy=:manual,
+        init_expr="EML[1, EML[x, y]]",
+        init_noise=0.0,
+        search_iters=4,
+        hardening_iters=2,
+        eval_every=2,
+        tail_eval_every=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
     )
     result = run_training(cfg; rng=StableRNG(1))
-    @test haskey(result.metrics, :max_output_abs)
-    @test all(<=((0.25 + 1e-9)), result.metrics[:max_output_abs])
+    @test !isempty(result.metrics[:soft_rmse])
+    @test result.failure_reason == EMLRegression.no_failure
 end
 
-@testset "training loop keeps exp-heavy batches finite after exp clamping" begin
-    overflow_target = TargetSpec(
-        :overflow_probe,
-        1,
-        :must_pass,
-        2,
-        RecoveredTree(Dict(1 => (:const1, :const1), 2 => (:const1, :const1), 3 => (:const1, :const1))),
-        (rng, n) -> ComplexF64.(fill(1000.0, n)),
-    )
-    EMLRegression.TARGETS[:overflow_probe] = overflow_target
-    try
-        cfg = TrainConfig(
-            depth=2,
-            target=:overflow_probe,
-            batch_size=8,
-            steps=2,
-            learning_rate=1e-2,
-        )
-        result = run_training(cfg; rng=StableRNG(1))
-        @test result.failure_reason == EMLRegression.no_failure
-        @test all(isfinite, result.metrics[:max_output_abs])
-    finally
-        delete!(EMLRegression.TARGETS, :overflow_probe)
-    end
-end
-
-@testset "initialization strategies bias root selections differently" begin
-    tree = build_master_tree(depth=3, variables=(:x,))
-
-    gaussian, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:small_gaussian))
-    terminal, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:zero_bias_to_inputs))
-    subtree, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:subtree_favoring))
-    margin, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:margin_biased))
-
-    @test length(gaussian.nodes) == length(tree.nodes)
-    @test terminal.nodes[1].left_logits[1] > terminal.nodes[1].left_logits[end]
-    @test subtree.nodes[1].left_logits[end] > subtree.nodes[1].left_logits[1]
-    @test maximum(margin.nodes[1].left_logits) - minimum(margin.nodes[1].left_logits) >
-          maximum(gaussian.nodes[1].left_logits) - minimum(gaussian.nodes[1].left_logits)
-end
-
-@testset "depth5 blind bias favors subtrees near the root with decaying strength" begin
-    tree = build_master_tree(depth=5, variables=(:x, :y))
-    blind, _ = Lux.setup(StableRNG(1), EMLTreeLayer(tree; init_strategy=:depth5_blind_bias))
-
-    root_margin = blind.nodes[1].left_logits[end] - maximum(blind.nodes[1].left_logits[1:end-1])
-    deep_margin = blind.nodes[12].left_logits[end] - maximum(blind.nodes[12].left_logits[1:end-1])
-
-    @test root_margin > 0.0
-    @test deep_margin > 0.0
-    @test root_margin > deep_margin
-end
-
-@testset "target-tree-noise initialization snaps to the source tree at zero noise" begin
-    target = get_target(:depth4_nested)
-    variables = target.arity == 1 ? (:x,) : (:x, :y)
-    tree = build_master_tree(depth=target.depth, variables=variables)
-    layer = EMLTreeLayer(tree; init_strategy=:small_gaussian)
-
-    ps = EMLRegression.initialize_training_parameters(
-        StableRNG(1),
-        layer,
-        target.tree;
-        init_strategy=:target_tree_noise,
-        target_noise_std=0.0,
-    )
-
-    xs = sample_domain(target, 32; rng=StableRNG(2))
-    ys = evaluate_target(target, xs)
-    recovered = search_recovered_tree(layer, ps, tree, xs, ys)
-    @test EMLRegression.structure_match(target.tree, recovered)
-end
-
-@testset "deep training clamps internal node magnitudes" begin
+@testset "depth4 random_hot training returns without tuple-gradient exception" begin
     cfg = TrainConfig(
-        depth=6,
-        target=:depth6_inverse_logy,
-        batch_size=32,
-        steps=2,
-        learning_rate=0.03,
+        target=:eml_depth4,
+        depth=4,
+        init_strategy=:random_hot,
+        search_iters=50,
+        hardening_iters=20,
+        eval_every=2,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
     )
-    result = run_training(cfg; rng=StableRNG(1))
-    @test haskey(result.metrics, :max_node_abs)
-    @test all(<=(1.0e6 + 1.0e-6), result.metrics[:max_node_abs])
+    result = run_training(cfg; rng=StableRNG(137))
+    @test result isa TrainingResult
+    @test result.failure_reason in (EMLRegression.no_failure, EMLRegression.nonfinite_detected)
+end
+
+@testset "nonfinite search steps trigger restart accounting instead of immediate abort" begin
+    cfg = TrainConfig(
+        target=:eml_depth4,
+        depth=4,
+        init_strategy=:random_hot,
+        search_iters=6,
+        hardening_iters=0,
+        eval_every=2,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
+        nan_restart_patience=1,
+        max_nan_restarts=2,
+    )
+    result = run_training(cfg; rng=StableRNG(137))
+    @test haskey(result.summary, :nan_restarts)
+    @test haskey(result.summary, :nonfinite_steps)
+    @test result.summary[:nan_restarts] > 0
+    @test result.summary[:nonfinite_steps] > 0
+end
+
+@testset "gradient clipping rescales oversized nested gradients" begin
+    grads = (
+        leaf_logits=fill(3.0, 2, 3),
+        blend_logits=fill(4.0, 1, 2),
+    )
+    clipped = EMLRegression._clip_gradients(grads, 1.0)
+    sq_norm = sum(abs2, clipped.leaf_logits) + sum(abs2, clipped.blend_logits)
+    @test sqrt(sq_norm) <= 1.0 + 1.0e-12
+    @test clipped.leaf_logits[1, 1] < grads.leaf_logits[1, 1]
+    @test clipped.blend_logits[1, 1] < grads.blend_logits[1, 1]
 end

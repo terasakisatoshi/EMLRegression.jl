@@ -13,49 +13,51 @@ function parse_args(args)
     return parsed
 end
 
-function _override_float(parsed, flag, fallback)
-    return haskey(parsed, flag) ? parse(Float64, parsed[flag]) : fallback
-end
-
-function _override_int(parsed, flag, fallback)
-    return haskey(parsed, flag) ? parse(Int, parsed[flag]) : fallback
-end
-
-function _override_symbol(parsed, flag, fallback)
-    return haskey(parsed, flag) ? Symbol(parsed[flag]) : fallback
-end
+_override_float(parsed, flag, fallback) = haskey(parsed, flag) ? parse(Float64, parsed[flag]) : fallback
+_override_int(parsed, flag, fallback) = haskey(parsed, flag) ? parse(Int, parsed[flag]) : fallback
+_override_symbol(parsed, flag, fallback) = haskey(parsed, flag) ? Symbol(parsed[flag]) : fallback
+_json_float(x) = isfinite(x) ? x : nothing
 
 function load_cfg(path, target_name, parsed=Dict{String,String}())
     cfg = TOML.parsefile(path)
     target = get_target(Symbol(target_name))
-    if target.depth != cfg["depth"]
-        error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
-    end
+    target.depth == cfg["depth"] || error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
     config_name = get(parsed, "--config-name", cfg["name"])
+
     return TrainConfig(
         depth=target.depth,
         target=Symbol(target_name),
-        batch_size=_override_int(parsed, "--batch-size", cfg["batch_size"]),
-        steps=_override_int(parsed, "--steps", cfg["steps"]),
-        init_strategy=_override_symbol(parsed, "--init-strategy", Symbol(get(cfg, "init_strategy", "small_gaussian"))),
-        target_noise_std=_override_float(parsed, "--target-noise-std", get(cfg, "target_noise_std", 0.0)),
-        learning_rate=_override_float(parsed, "--learning-rate", get(cfg, "learning_rate", 1.0e-2)),
-        complexity_weight=_override_float(parsed, "--complexity-weight", get(cfg, "complexity_weight", 0.0)),
-        margin_penalty_weight=_override_float(parsed, "--margin-penalty-weight", get(cfg, "margin_penalty_weight", 0.0)),
-        margin_target=_override_float(parsed, "--margin-target", get(cfg, "margin_target", 1.0)),
-        hardening_steps=_override_int(parsed, "--hardening-steps", get(cfg, "hardening_steps", 0)),
-        hardening_start=_override_int(parsed, "--hardening-start", get(cfg, "hardening_start", typemax(Int))),
-        hardening_weight=_override_float(parsed, "--hardening-weight", get(cfg, "hardening_weight", 0.1)),
-        temperature=_override_float(parsed, "--temperature", get(cfg, "temperature", 1.0)),
-        margin_threshold=_override_float(parsed, "--margin-threshold", get(cfg, "margin_threshold", 0.05)),
-        stability_limit=_override_float(parsed, "--stability-limit", get(cfg, "stability_limit", 1.0e6)),
+        batch_size=_override_int(parsed, "--batch-size", get(cfg, "batch_size", 0)),
+        init_strategy=_override_symbol(parsed, "--init-strategy", Symbol(get(cfg, "init_strategy", "biased"))),
+        init_expr=get(parsed, "--init-expr", get(cfg, "init_expr", nothing)),
+        init_scale=_override_float(parsed, "--init-scale", get(cfg, "init_scale", 1.0)),
+        init_noise=_override_float(parsed, "--init-noise", get(cfg, "init_noise", 0.0)),
+        search_iters=_override_int(parsed, "--search-iters", get(cfg, "search_iters", 6000)),
+        hardening_iters=_override_int(parsed, "--hardening-iters", get(cfg, "hardening_iters", 2000)),
+        lr=_override_float(parsed, "--lr", get(cfg, "lr", 1.0e-2)),
+        tau_search=_override_float(parsed, "--tau-search", get(cfg, "tau_search", 2.5)),
+        tau_hard=_override_float(parsed, "--tau-hard", get(cfg, "tau_hard", 0.01)),
+        lam_ent_hard=_override_float(parsed, "--lam-ent-hard", get(cfg, "lam_ent_hard", 2.0e-2)),
+        lam_bin_hard=_override_float(parsed, "--lam-bin-hard", get(cfg, "lam_bin_hard", 2.0e-2)),
+        lam_inter=_override_float(parsed, "--lam-inter", get(cfg, "lam_inter", 1.0e-4)),
+        inter_threshold=_override_float(parsed, "--inter-threshold", get(cfg, "inter_threshold", 50.0)),
+        eval_every=_override_int(parsed, "--eval-every", get(cfg, "eval_every", 200)),
+        tail_eval_every=_override_int(parsed, "--tail-eval-every", get(cfg, "tail_eval_every", 50)),
+        fit_success_thr=_override_float(parsed, "--fit-success-thr", get(cfg, "fit_success_thr", 1.0e-6)),
+        success_thr=_override_float(parsed, "--success-thr", get(cfg, "success_thr", 1.0e-20)),
+        snap_threshold=_override_float(parsed, "--snap-threshold", get(cfg, "snap_threshold", 0.01)),
+        max_uncertain_success=_override_int(parsed, "--max-uncertain-success", get(cfg, "max_uncertain_success", 0)),
+        data_lo=_override_float(parsed, "--data-lo", get(cfg, "data_lo", 1.0)),
+        data_hi=_override_float(parsed, "--data-hi", get(cfg, "data_hi", 3.0)),
+        data_step=_override_float(parsed, "--data-step", get(cfg, "data_step", 0.1)),
+        gen_lo=_override_float(parsed, "--gen-lo", get(cfg, "gen_lo", 0.5)),
+        gen_hi=_override_float(parsed, "--gen-hi", get(cfg, "gen_hi", 5.0)),
+        generalization_points=_override_int(parsed, "--generalization-points", get(cfg, "generalization_points", 4000)),
     ), Dict("name" => config_name)
 end
 
 function write_raw_result(config_meta, cfg, seed, outcome)
     mkpath("results/raw")
-    max_output_abs = isempty(outcome.training.metrics[:max_output_abs]) ? Inf : maximum(outcome.training.metrics[:max_output_abs])
-    max_node_abs = isempty(outcome.training.metrics[:max_node_abs]) ? Inf : maximum(outcome.training.metrics[:max_node_abs])
     result = Dict(
         "config_name" => config_meta["name"],
         "depth" => cfg.depth,
@@ -63,37 +65,28 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "tier" => String(get_target(cfg.target).tier),
         "seed" => seed,
         "init_strategy" => String(cfg.init_strategy),
-        "target_noise_std" => cfg.target_noise_std,
+        "fit_success" => outcome.recovery.fit_success,
+        "symbol_success" => outcome.recovery.symbol_success,
+        "stable_symbol_success" => outcome.recovery.stable_symbol_success,
         "success" => outcome.recovery.success,
-        "reason" => String(outcome.recovery.reason),
-        "snap_status" => String(outcome.recovery.snap_status),
-        "structure_match" => outcome.recovery.structure_match,
-        "ambiguous_nodes" => outcome.recovery.ambiguous_nodes,
-        "snap_diagnostics" => [
-            Dict(
-                "node_id" => diag.node_id,
-                "left_choice" => String(diag.left_choice),
-                "right_choice" => String(diag.right_choice),
-                "left_margin" => diag.left_margin,
-                "right_margin" => diag.right_margin,
-                "min_margin" => diag.min_margin,
-                "ambiguous" => diag.ambiguous,
-            )
-            for diag in outcome.recovery.snap_diagnostics
-        ],
-        "validation_loss" => outcome.recovery.validation_loss,
-        "numerical_match" => outcome.recovery.numerical_match,
-        "training_failure_reason" => String(outcome.recovery.training_failure_reason),
-        "max_output_abs" => max_output_abs,
-        "max_node_abs" => max_node_abs,
-        "formula" => formula_string(outcome.recovered_tree, outcome.master_tree),
-        "train_loss" => outcome.training.metrics[:train_loss],
-        "hardening_loss" => outcome.training.metrics[:hardening_loss],
+        "n_uncertain" => outcome.recovery.n_uncertain,
+        "failure_reason" => string(outcome.training.failure_reason),
+        "nan_restarts" => get(outcome.training.summary, :nan_restarts, 0),
+        "nonfinite_steps" => get(outcome.training.summary, :nonfinite_steps, 0),
+        "snap_mse" => _json_float(outcome.recovery.snap_mse),
+        "snap_rmse" => _json_float(outcome.recovery.snap_rmse),
+        "snap_max_real" => _json_float(outcome.recovery.snap_max_real),
+        "snap_max_imag" => _json_float(outcome.recovery.snap_max_imag),
+        "hardening_iter" => outcome.recovery.hardening_iter,
+        "soft_rmse_last" => _json_float(isempty(outcome.training.metrics[:soft_rmse]) ? NaN : outcome.training.metrics[:soft_rmse][end]),
+        "hard_rmse_last" => _json_float(isempty(outcome.training.metrics[:hard_rmse]) ? NaN : outcome.training.metrics[:hard_rmse][end]),
+        "snap_info" => Dict(
+            "uncertain_leaves" => outcome.snap.uncertain_leaves,
+            "uncertain_gates" => outcome.snap.uncertain_gates,
+            "n_uncertain" => outcome.snap.n_uncertain,
+        ),
     )
     path = joinpath("results/raw", "$(config_meta["name"])-$(cfg.target)-seed$(seed).json")
-    if isfile(path)
-        println("overwriting existing raw result: " * path)
-    end
     open(path, "w") do io
         JSON3.write(io, result)
     end

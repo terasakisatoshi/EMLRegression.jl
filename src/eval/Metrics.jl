@@ -1,54 +1,50 @@
 """
     RecoveryVerdict
 
-blind recovery 判定の結果です。
+PyTorch v16 相当の snapping 後判定を保持します。
 """
 struct RecoveryVerdict
+    snap_mse::Float64
+    snap_rmse::Float64
+    snap_max_real::Float64
+    snap_max_imag::Float64
+    fit_success::Bool
+    symbol_success::Bool
+    stable_symbol_success::Bool
     success::Bool
-    reason::Symbol
-    snap_status::Symbol
-    structure_match::Bool
-    ambiguous_nodes::Int
-    validation_loss::Float64
-    numerical_match::Bool
-    training_failure_reason::Symbol
-    snap_diagnostics
+    n_uncertain::Int
+    hardening_iter
 end
 
 """
-    recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match)
+    recovery_verdict(; snap_mse, snap_max_real, snap_max_imag, n_uncertain, ...)
 
-学習結果と snapping 結果から、snapped tree が厳密に回復できたかを判定します。
+論文寄りの `fit_success / symbol_success / stable_symbol_success` を計算します。
 """
-function recovery_verdict(; train_loss, validation_loss, snap_status, structure_match, ambiguous_nodes, numerical_match, training_failure_reason=no_failure, snap_diagnostics=NamedTuple[])
-    success = training_failure_reason == no_failure && snap_status == :ok && structure_match && numerical_match
-    reason = if training_failure_reason != no_failure
-        Symbol(string(training_failure_reason))
-    elseif success
-        :recovered
-    elseif snap_status != :ok
-        :snap_failed
-    else
-        :mismatch
-    end
+function recovery_verdict(;
+    snap_mse,
+    snap_max_real,
+    snap_max_imag,
+    n_uncertain,
+    fit_success_thr::Float64=1.0e-6,
+    success_thr::Float64=1.0e-20,
+    max_uncertain_success::Int=0,
+    hardening_iter=nothing,
+)
+    snap_rmse = isfinite(snap_mse) ? sqrt(max(snap_mse, 0.0)) : NaN
+    fit_success = isfinite(snap_mse) && snap_mse < fit_success_thr
+    symbol_success = isfinite(snap_mse) && snap_mse < success_thr
+    stable_symbol_success = symbol_success && n_uncertain <= max_uncertain_success
     return RecoveryVerdict(
-        success,
-        reason,
-        snap_status,
-        structure_match,
-        ambiguous_nodes,
-        validation_loss,
-        numerical_match,
-        Symbol(string(training_failure_reason)),
-        snap_diagnostics,
+        snap_mse,
+        snap_rmse,
+        snap_max_real,
+        snap_max_imag,
+        fit_success,
+        symbol_success,
+        stable_symbol_success,
+        fit_success,
+        n_uncertain,
+        hardening_iter,
     )
-end
-
-"""
-    numerical_match(preds, ys; atol=1e-6)
-
-予測値と正解値が許容誤差以内で一致するかを返します。
-"""
-function numerical_match(preds, ys; atol=1e-6)
-    return all(abs.(preds .- ys) .<= atol)
 end

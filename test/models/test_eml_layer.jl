@@ -3,62 +3,39 @@ using Lux
 using StableRNGs
 using EMLRegression
 
-@testset "EML layer parameters are node-wise" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+@testset "paper-faithful tree parameter shapes" begin
+    tree = EMLTree(depth=3)
     rng = StableRNG(1)
-    ps, st = Lux.setup(rng, layer)
-    @test haskey(ps, :nodes)
-    @test haskey(ps.nodes[1], :left_logits)
-    @test haskey(ps.nodes[1], :right_logits)
-    @test st == NamedTuple()
+    ps, _ = Lux.setup(rng, tree)
+    @test size(ps.leaf_logits) == (8, 3)
+    @test size(ps.blend_logits) == (7, 2)
 end
 
-@testset "EML layer evaluates recursively" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
+@testset "paper-faithful forward returns root prediction and diagnostics" begin
+    tree = EMLTree(depth=2)
     rng = StableRNG(1)
-    ps, st = Lux.setup(rng, layer)
-    x = ComplexF64[1.0 + 0im, 2.0 + 0im]
-    y, st2 = Lux.apply(layer, x, ps, st)
-    @test length(y) == 2
-    @test eltype(y) == ComplexF64
-    @test st2 == st
+    ps, st = Lux.setup(rng, tree)
+    x = ComplexF64[1.0 + 0.0im, 2.0 + 0.0im]
+    y = ComplexF64[1.5 + 0.0im, 2.5 + 0.0im]
+    pred, aux = Lux.apply(tree, (x, y), ps, st)
+    @test length(pred) == 2
+    @test haskey(aux, :leaf_probs)
+    @test haskey(aux, :gate_probs)
+    @test haskey(aux, :eml_outputs)
 end
 
-@testset "EML layer initialization depends on rng" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    ps1, _ = Lux.setup(StableRNG(1), layer)
-    ps2, _ = Lux.setup(StableRNG(2), layer)
-    @test ps1 != ps2
-    @test any(!iszero, ps1.nodes[1].left_logits)
+@testset "manual init helper validates depth and populates logits" begin
+    tree = EMLTree(depth=2, init_strategy=:manual)
+    rng = StableRNG(1)
+    ps, _ = Lux.setup(rng, tree)
+    EMLRegression.init_from_expr!(ps, "EML[1, EML[x, y]]"; k=32.0)
+    @test maximum(ps.leaf_logits) == 32.0
+    @test minimum(ps.leaf_logits) == -32.0
 end
 
-@testset "EML layer clamps exp inputs to avoid overflow" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    ps = (
-        nodes=(
-            (left_logits=[12.0, -12.0, -12.0], right_logits=[12.0, -12.0, -12.0]),
-            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
-            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
-        ),
-    )
-    st = NamedTuple()
-    x = ComplexF64[1000.0 + 0.0im]
-    y, _ = Lux.apply(layer, x, ps, st)
-    @test isfinite(real(only(y)))
-    @test isfinite(imag(only(y)))
-end
-
-@testset "EML layer can inspect node outputs" begin
-    layer = EMLTreeLayer(build_master_tree(depth=2, variables=(:x,)))
-    ps = (
-        nodes=(
-            (left_logits=[12.0, -12.0, -12.0], right_logits=[12.0, -12.0, -12.0]),
-            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
-            (left_logits=[0.0, 0.0], right_logits=[0.0, 0.0]),
-        ),
-    )
-    report = EMLRegression._inspect_node_outputs(layer, ComplexF64[1000.0 + 0.0im], ps)
-    @test !report.has_nan
-    @test !report.has_inf
-    @test isfinite(report.max_abs)
+@testset "complex blend bypasses exact one gate to avoid nan cross terms" begin
+    child = ComplexF64[Inf + 2.0im, 3.0 + 4.0im]
+    blended = EMLRegression._complex_blend(child, 1.0)
+    @test blended[1] == 1.0 + 0.0im
+    @test blended[2] == 1.0 + 0.0im
 end

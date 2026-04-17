@@ -1,158 +1,208 @@
-using ChainRulesCore
 using StableRNGs: StableRNG
 using Lux
 using Optimisers
 using Zygote
 
-"""
-    run_training(cfg; rng=StableRNG(1))
-
-現在の最小 EML モデルで学習ループを実行し、`TrainingResult` を返します。
-"""
 function run_training(cfg::TrainConfig; rng=StableRNG(1))
     target = get_target(cfg.target)
-    variables = target.arity == 1 ? (:x,) : (:x, :y)
-    layer = EMLTreeLayer(build_master_tree(depth=cfg.depth, variables=variables); init_strategy=cfg.init_strategy)
-    ps, st = Lux.setup(rng, layer)
-    if cfg.init_strategy === :target_tree_noise
-        ps = initialize_training_parameters(
-            rng,
-            layer,
-            target.tree;
-            init_strategy=cfg.init_strategy,
-            target_noise_std=cfg.target_noise_std,
-        )
-    end
-    opt = Optimisers.Adam(cfg.learning_rate)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+    ps, st = Lux.setup(rng, tree)
+    _apply_initialization!(rng, ps, cfg)
+
+    opt = Optimisers.Adam(cfg.lr)
     opt_state = Optimisers.setup(opt, ps)
 
-    train_loss = Float64[]
-    hardening_loss = Float64[]
-    margin_penalty_loss = Float64[]
-    logit_margin = Float64[]
-    max_output_abs = Float64[]
-    max_node_abs = Float64[]
+    metrics = Dict(
+        :soft_rmse => Float64[],
+        :hard_rmse => Float64[],
+        :tau => Float64[],
+        :entropy => Float64[],
+        :binarity => Float64[],
+    )
+    summary = Dict{Symbol,Any}(
+        :hardening_iter => nothing,
+        :nan_restarts => 0,
+        :nonfinite_steps => 0,
+    )
+
+    best_soft_loss = Inf
+    best_soft_state = deepcopy(ps)
+    phase = :search
+    hardening_iter = nothing
+    hard_step = 0
+    hard_success_streak = 0
+    nan_streak = 0
+    nan_restarts = 0
     failure_reason = no_failure
 
-    total_steps = cfg.steps + cfg.hardening_steps
-    hardening_start = _effective_hardening_start(cfg)
+    total_iters = cfg.search_iters + cfg.hardening_iters
+    for it in 1:total_iters
+        if cfg.max_nan_restarts > 0 && nan_restarts >= cfg.max_nan_restarts
+            failure_reason = nonfinite_detected
+            break
+        end
 
-    for step in 1:total_steps
-        xs = sample_domain(target, cfg.batch_size; rng=rng)
-        ys = evaluate_target(target, xs)
-        stable_batch, batch_report = _stabilize_complex_values(xs, ys, ps, st, layer; limit=cfg.stability_limit)
-        if !_report_is_finite(batch_report)
-            failure_reason = _failure_reason(batch_report)
-            push!(max_output_abs, batch_report.max_abs)
-            push!(max_node_abs, batch_report.max_abs)
-            break
+        if phase === :search && it > cfg.search_iters
+            phase = :hardening
+            hardening_iter = it
+            summary[:hardening_iter] = it
+            hard_step = 0
+            ps = deepcopy(best_soft_state)
+            opt_state = Optimisers.setup(opt, ps)
         end
-        node_report = _inspect_node_outputs(layer, xs, ps)
-        push!(max_node_abs, node_report.max_abs)
-        if !_report_is_finite(node_report)
-            failure_reason = _failure_reason(node_report)
-            push!(max_output_abs, node_report.max_abs)
-            break
-        end
-        hardening_active = step >= hardening_start
-        temperature = _hardening_temperature(cfg, step, hardening_start, hardening_active)
+
+        tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
+        opt = Optimisers.Adam(cfg.lr * lr_mult)
+
         grads = _autodiff_gradient(ps) do ps_current
-            preds, _ = Lux.apply(layer, xs, ps_current, st)
-            preds, _ = _stabilize_complex_values(preds; limit=cfg.stability_limit)
-            mse_loss = _mse(preds, ys)
-            hardening_term = hardening_active ? cfg.hardening_weight * _hardening_penalty(ps_current; temperature=temperature) : 0.0
-            complexity_term = cfg.complexity_weight * _complexity_penalty(layer, ps_current; temperature=temperature)
-            margin_term = cfg.margin_penalty_weight * _margin_penalty(layer, ps_current; target_margin=cfg.margin_target)
-            mse_loss + hardening_term + complexity_term + margin_term
+            pred, aux = Lux.apply(tree, (x_train, y_train), ps_current, _state_with_tau(st, tau))
+            total, _, _, _, _, _, _ = compute_losses(
+                pred,
+                t_train,
+                aux.leaf_probs,
+                aux.gate_probs,
+                aux.eml_outputs,
+                lam_ent,
+                lam_bin,
+                cfg.lam_inter,
+                cfg.inter_threshold,
+            )
+            total
         end
+        grads = _clip_gradients(grads, cfg.grad_clip_norm)
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
-        preds, st = Lux.apply(layer, xs, ps, st)
-        preds, report = _stabilize_complex_values(preds; limit=cfg.stability_limit)
-        push!(max_output_abs, report.max_abs)
-        if !_report_is_finite(report)
-            failure_reason = _failure_reason(report)
-            break
+
+        pred, aux = Lux.apply(tree, (x_train, y_train), ps, _state_with_tau(st, tau))
+        total, data_loss, entropy, binarity, _, _, _ = compute_losses(
+            pred,
+            t_train,
+            aux.leaf_probs,
+            aux.gate_probs,
+            aux.eml_outputs,
+            lam_ent,
+            lam_bin,
+            cfg.lam_inter,
+            cfg.inter_threshold,
+        )
+
+        if !isfinite(total)
+            summary[:nonfinite_steps] += 1
+            nan_streak += 1
+            if nan_streak >= cfg.nan_restart_patience
+                ps = deepcopy(best_soft_state)
+                opt_state = Optimisers.setup(opt, ps)
+                nan_streak = 0
+                nan_restarts += 1
+                summary[:nan_restarts] = nan_restarts
+            end
+            continue
         end
-        loss = _mse(preds, ys)
-        push!(train_loss, loss)
-        push!(logit_margin, _mean_logit_margin(ps))
-        if hardening_active
-            push!(hardening_loss, cfg.hardening_weight * _hardening_penalty(ps; temperature=temperature))
+
+        nan_streak = 0
+        soft_loss = float(real(data_loss))
+        push!(metrics[:soft_rmse], sqrt(max(soft_loss, 0.0)))
+        push!(metrics[:tau], tau)
+        push!(metrics[:entropy], float(real(entropy)))
+        push!(metrics[:binarity], float(real(binarity)))
+
+        if soft_loss < best_soft_loss
+            best_soft_loss = soft_loss
+            best_soft_state = deepcopy(ps)
         end
-        if cfg.margin_penalty_weight > 0.0
-            push!(margin_penalty_loss, cfg.margin_penalty_weight * _margin_penalty(layer, ps; target_margin=cfg.margin_target))
+
+        if it % max(cfg.eval_every, 1) == 0 || (phase === :hardening && tau <= cfg.tail_eval_tau && it % max(cfg.tail_eval_every, 1) == 0)
+            hard_mse, _, _ = evaluate(tree, ps, st, x_train, y_train, t_train; tau=cfg.tau_hard)
+            push!(metrics[:hard_rmse], sqrt(max(hard_mse, 0.0)))
+            if phase === :hardening && isfinite(hard_mse) && hard_mse < cfg.success_thr
+                hard_success_streak += 1
+                hard_success_streak >= cfg.early_stop_count && break
+            else
+                hard_success_streak = 0
+            end
         end
+
+        phase === :hardening && (hard_step += 1)
     end
 
-    metrics = Dict(
-        :train_loss => train_loss,
-        :hardening_loss => hardening_loss,
-        :margin_penalty_loss => margin_penalty_loss,
-        :logit_margin => logit_margin,
-        :max_output_abs => max_output_abs,
-        :max_node_abs => max_node_abs,
-    )
-    return TrainingResult(cfg, metrics, failure_reason, ps, st)
+    summary[:hardening_iter] = hardening_iter
+    return TrainingResult(cfg, metrics, failure_reason, ps, st, summary)
 end
 
-function initialize_training_parameters(rng, layer::EMLTreeLayer, target_tree::RecoveredTree; init_strategy::Symbol, target_noise_std::Float64=0.0)
-    if init_strategy === :target_tree_noise
-        node_params = Tuple(
-            (
-                left_logits=_target_tree_logits(
-                    rng,
-                    node.left_candidates,
-                    _initial_choice_symbol(node.left_candidates, get(target_tree.choices, node.id, (:const1, :const1))[1]);
-                    noise_std=target_noise_std,
-                ),
-                right_logits=_target_tree_logits(
-                    rng,
-                    node.right_candidates,
-                    _initial_choice_symbol(node.right_candidates, get(target_tree.choices, node.id, (:const1, :const1))[2]);
-                    noise_std=target_noise_std,
-                ),
-            ) for node in layer.tree.nodes
-        )
-        return (; nodes=node_params)
+function _apply_initialization!(rng, ps, cfg::TrainConfig)
+    if cfg.init_strategy === :manual
+        isnothing(cfg.init_expr) && throw(ArgumentError("init_expr is required when init_strategy=:manual"))
+        init_from_expr!(ps, cfg.init_expr)
     end
-
-    ps, _ = Lux.setup(rng, EMLTreeLayer(layer.tree; init_strategy=init_strategy))
+    if cfg.init_noise > 0
+        ps.leaf_logits .+= randn(rng, size(ps.leaf_logits)) .* cfg.init_noise
+        ps.blend_logits .+= randn(rng, size(ps.blend_logits)) .* cfg.init_noise
+    end
     return ps
 end
 
-function _target_tree_logits(rng, candidates, selected_symbol; noise_std::Float64, selected_logit::Float64=4.0, other_logit::Float64=-4.0)
-    logits = fill(other_logit, length(candidates))
-    selected_index = findfirst(==(selected_symbol), candidates)
-    isnothing(selected_index) && error("selected symbol $(selected_symbol) not found in candidates")
-    logits[selected_index] = selected_logit
-    noise_std <= 0.0 && return logits
-    return logits .+ noise_std .* randn(rng, Float64, length(candidates))
-end
+function compute_losses(
+    pred,
+    target,
+    leaf_probs,
+    gate_probs,
+    eml_outputs,
+    lam_ent,
+    lam_bin,
+    lam_inter,
+    inter_threshold;
+    lam_sparse::Float64=0.0,
+    uncertainty_power::Float64=2.0,
+)
+    data_loss = _mse(pred, target)
+    eps = 1.0e-12
 
-function _initial_choice_symbol(candidates, selected_symbol::Symbol)
-    selected_symbol in candidates && return selected_symbol
-    if startswith(String(selected_symbol), "node_")
-        subtree_candidates = filter(symbol -> startswith(String(symbol), "node_"), candidates)
-        length(subtree_candidates) == 1 && return only(subtree_candidates)
+    leaf_max = vec(maximum(leaf_probs; dims=2))
+    leaf_unc = clamp.((1.0 .- leaf_max) ./ (2.0 / 3.0), 0.0, 1.0) .^ uncertainty_power
+    leaf_ent = vec(-sum(leaf_probs .* log.(leaf_probs .+ eps); dims=2))
+    entropy = isempty(leaf_ent) ? 0.0 : sum(leaf_ent .* leaf_unc) / length(leaf_ent)
+
+    gate_unc = clamp.(1.0 .- abs.(2.0 .* gate_probs .- 1.0), 0.0, 1.0) .^ uncertainty_power
+    gate_bin = gate_probs .* (1.0 .- gate_probs)
+    binarity = isempty(gate_bin) ? 0.0 : sum(gate_bin .* gate_unc) / length(gate_bin)
+
+    inter_penalty = 0.0
+    if lam_inter > 0 && !isempty(eml_outputs)
+        excess = max.(abs.(eml_outputs) .- inter_threshold, 0.0)
+        inter_penalty = sum(abs2, excess) / length(excess)
     end
-    return :const1 in candidates ? :const1 : first(candidates)
+
+    sparse = isempty(gate_probs) ? 0.0 : sum(1.0 .- gate_probs) / length(gate_probs)
+    total = data_loss + lam_ent * entropy + lam_bin * binarity + lam_inter * inter_penalty + lam_sparse * sparse
+    ambiguity = isempty(gate_unc) ? mean(leaf_unc) : (sum(leaf_unc) + sum(gate_unc)) / (length(leaf_unc) + length(gate_unc))
+    return total, data_loss, entropy, binarity, inter_penalty, sparse, ambiguity
 end
 
-function _effective_hardening_start(cfg::TrainConfig)
-    if cfg.hardening_steps <= 0
-        return typemax(Int)
-    elseif cfg.hardening_start == typemax(Int)
-        return cfg.steps + 1
-    else
-        return cfg.hardening_start
+function evaluate(tree::EMLTree, ps, st, x_data, y_data, targets; tau::Float64=0.01)
+    pred, _ = Lux.apply(tree, (x_data, y_data), ps, _state_with_tau(st, tau))
+    mse = _mse(pred, targets)
+    max_real = maximum(abs.(real.(pred) .- real.(targets)))
+    max_imag = maximum(abs.(imag.(pred)))
+    return mse, max_real, max_imag
+end
+
+function _state_with_tau(st, tau::Float64)
+    return (; tau_leaf=tau, tau_gate=tau, leaf_probs=get(st, :leaf_probs, nothing), gate_probs=get(st, :gate_probs, nothing), eml_outputs=get(st, :eml_outputs, nothing))
+end
+
+function _schedule(cfg::TrainConfig, phase::Symbol, hard_step::Int)
+    if phase === :search
+        return cfg.tau_search, 0.0, 0.0, 1.0
     end
+    t = hard_step / max(cfg.hardening_iters, 1)
+    t_tau = t ^ cfg.hardening_tau_power
+    tau = cfg.tau_search * (cfg.tau_hard / cfg.tau_search) ^ t_tau
+    lam_ent = t * cfg.lam_ent_hard
+    lam_bin = t * cfg.lam_bin_hard
+    lr_mult = max(cfg.hardening_lr_floor, (1.0 - t)^2)
+    return tau, lam_ent, lam_bin, lr_mult
 end
 
-"""
-    _mse(preds, ys)
-
-複素値対応の平均二乗誤差です。
-"""
 function _mse(preds, ys)
     diffs = preds .- ys
     return sum(abs2, diffs) / max(length(diffs), 1)
@@ -164,108 +214,24 @@ function _autodiff_gradient(loss_fn, ps)
     return grads
 end
 
-function _mean_logit_margin(ps)
-    margins = Float64[]
-    for node in ps.nodes
-        push!(margins, _logit_margin(node.left_logits))
-        push!(margins, _logit_margin(node.right_logits))
-    end
-    return isempty(margins) ? 0.0 : sum(margins) / length(margins)
+function _clip_gradients(grads, max_norm::Real)
+    max_norm <= 0 && return grads
+    total_norm = sqrt(_grad_sqnorm(grads))
+    (!isfinite(total_norm) || total_norm <= max_norm) && return grads
+    scale = max_norm / (total_norm + eps(Float64))
+    return _scale_grads(grads, scale)
 end
 
-function _logit_margin(logits)
-    sorted = sort(collect(logits); rev=true)
-    return length(sorted) < 2 ? sorted[1] : sorted[1] - sorted[2]
-end
+_grad_sqnorm(::Nothing) = 0.0
+_grad_sqnorm(x::Number) = abs2(x)
+_grad_sqnorm(x::AbstractArray) = sum(abs2, x)
+_grad_sqnorm(xs::Tuple) = sum(_grad_sqnorm, xs)
+_grad_sqnorm(xs::NamedTuple) = sum(_grad_sqnorm, values(xs))
 
-function _hardening_penalty(ps; temperature::Float64=1.0)
-    penalties = (
-        1.0 - maximum(_softmax_probabilities(logits; temperature=temperature))
-        for node in ps.nodes
-        for logits in (node.left_logits, node.right_logits)
-    )
-    return sum(penalties)
-end
-
-function _margin_penalty(layer::EMLTreeLayer, ps; target_margin::Float64=1.0)
-    bottleneck_margin = _active_min_logit_margin(layer, ps)
-    !isfinite(bottleneck_margin) && return 0.0
-    return max(target_margin - bottleneck_margin, 0.0)
-end
-
-function _active_min_logit_margin(layer::EMLTreeLayer, ps)
-    active_node_ids = ChainRulesCore.ignore_derivatives() do
-        _active_node_ids(snap_model(layer, ps))
-    end
-    min_margin = Inf
-    for node in layer.tree.nodes
-        node.id in active_node_ids || continue
-        min_margin = min(min_margin, _logit_margin(ps.nodes[node.id].left_logits))
-        min_margin = min(min_margin, _logit_margin(ps.nodes[node.id].right_logits))
-    end
-    return min_margin
-end
-
-function _complexity_penalty(layer::EMLTreeLayer, ps; temperature::Float64=1.0)
-    penalties = (
-        begin
-            probabilities = _softmax_probabilities(logits; temperature=temperature)
-            sum(probability * _candidate_cost(symbol) for (probability, symbol) in zip(probabilities, candidates))
-        end
-        for node in layer.tree.nodes
-        for (logits, candidates) in (
-            (ps.nodes[node.id].left_logits, node.left_candidates),
-            (ps.nodes[node.id].right_logits, node.right_candidates),
-        )
-    )
-    return sum(penalties)
-end
-
-function _candidate_cost(symbol::Symbol)
-    if symbol === :const1
-        return 0.0
-    elseif symbol === :x || symbol === :y
-        return 1.0
-    elseif startswith(String(symbol), "node_")
-        return 2.0
-    else
-        return 1.0
-    end
-end
-
-ChainRulesCore.@non_differentiable _candidate_cost(::Any...)
-
-function _softmax_probabilities(logits; temperature::Float64=1.0)
-    scaled = logits ./ max(temperature, 1.0e-6)
-    shifted = scaled .- maximum(scaled)
-    weights = exp.(shifted)
-    return weights ./ sum(weights)
-end
-
-function _hardening_temperature(cfg::TrainConfig, step::Int, hardening_start::Int, hardening_active::Bool)
-    if !hardening_active
-        return cfg.temperature
-    end
-    hardening_step = max(step - hardening_start, 0)
-    return max(cfg.temperature * (0.5 ^ hardening_step), 0.1)
-end
-
-function _stabilize_complex_values(values; limit::Float64)
-    report = inspect_complex_values(values)
-    if !_report_is_finite(report)
-        return values, report
-    end
-    clamped = clamp_complex_magnitude(values, limit)
-    return clamped, inspect_complex_values(clamped)
-end
-
-function _stabilize_complex_values(xs, ys, ps, st, layer; limit::Float64)
-    preds, _ = Lux.apply(layer, xs, ps, st)
-    return _stabilize_complex_values(preds; limit=limit)
-end
-
-_report_is_finite(report::StabilityReport) = !report.has_nan && !report.has_inf
-
-function _failure_reason(report::StabilityReport)
-    return report.failure_reason == no_failure ? nonfinite_detected : report.failure_reason
+_scale_grads(::Nothing, _) = nothing
+_scale_grads(x::Number, scale::Real) = x * scale
+_scale_grads(x::AbstractArray, scale::Real) = x .* scale
+_scale_grads(xs::Tuple, scale::Real) = map(x -> _scale_grads(x, scale), xs)
+function _scale_grads(xs::NamedTuple, scale::Real)
+    return NamedTuple{keys(xs)}(map(x -> _scale_grads(x, scale), values(xs)))
 end
