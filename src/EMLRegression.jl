@@ -1,5 +1,7 @@
 module EMLRegression
 
+using ChainRulesCore
+
 """
     eml(x, y)
 
@@ -23,7 +25,9 @@ include("eval/Recovery.jl")
 export eml
 export MasterTree
 export build_master_tree
+export EMLTree
 export EMLTreeLayer
+export init_from_expr!
 export _inspect_node_outputs
 export FailureReason
 export StabilityReport
@@ -36,21 +40,48 @@ export run_training
 export _autodiff_gradient
 export TargetSpec
 export get_target
+export filter_real_domain
+export make_grid_data
+export make_generalization_data
 export sample_domain
 export evaluate_target
 export RecoveredTree
 export snap_logits
-export snap_model
-export snap_diagnostics
-export search_recovered_tree
-export refine_recovered_tree
-export evaluate_recovered
+export analyze_snap
+export hard_project
+export hard_project!
 export formula_string
 export RecoveryVerdict
 export recovery_verdict
-export numerical_match
 export run_experiment
 
 eml(x, y) = exp.(x) .- log.(y)
+
+function ChainRulesCore.rrule(::typeof(eml), x::AbstractArray{<:Complex}, y::AbstractArray{<:Complex})
+    output = eml(x, y)
+    exp_x = exp.(x)
+    conj_y = conj.(y)
+
+    function eml_pullback(Δ)
+        Δc = _coerce_eml_tangent(Δ, output)
+        return NoTangent(), Δc .* conj.(exp_x), -Δc ./ conj_y
+    end
+
+    return output, eml_pullback
+end
+
+function _coerce_eml_tangent(::AbstractZero, output)
+    return zero(output)
+end
+
+function _coerce_eml_tangent(Δ::AbstractArray, output)
+    return map(Δ, output) do δ, ref
+        isnothing(δ) ? zero(ref) : δ
+    end
+end
+
+function _coerce_eml_tangent(Δ, output)
+    return isnothing(Δ) ? zero(output) : Δ
+end
 
 end

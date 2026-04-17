@@ -1,31 +1,29 @@
 using Test
-using StableRNGs
 using EMLRegression
 
-@testset "target registry" begin
-    target = get_target(:depth2_exp)
-    xs = sample_domain(target, 16; rng_seed=1)
-    ys = evaluate_target(target, xs)
-    @test length(xs) == 16
-    @test length(ys) == 16
-    @test eltype(ys) == ComplexF64
-    @test target.depth == 2
-    @test !isempty(target.tree.choices)
-end
-
-@testset "paper-aligned benchmark targets" begin
-    for name in (:depth2_exp, :depth2_double_exp, :depth3_log, :depth4_nested, :depth5_affine_log, :depth6_inverse_logy)
+@testset "paper-aligned targets are registered" begin
+    for name in (:eml_depth2, :eml_depth3, :eml_depth4, :eml_depth5, :eml_depth6)
         target = get_target(name)
-        xs = sample_domain(target, 8; rng_seed=2)
-        ys = evaluate_target(target, xs)
-        @test !isempty(ys)
-        @test target.tier in (:must_pass, :challenge)
+        @test target.name == name
+        @test target.depth >= 2
     end
 end
 
-@testset "target sampling can use an explicit rng" begin
-    target = get_target(:depth3_log)
-    xs1 = sample_domain(target, 8; rng=StableRNG(1))
-    xs2 = sample_domain(target, 8; rng=StableRNG(2))
-    @test xs1 != xs2
+@testset "real-domain filtering rejects invalid complex-domain points" begin
+    target = get_target(:eml_depth4)
+    x = [0.1, 1.0, 2.0]
+    y = [10.0, 1.5, 2.5]
+    xf, yf, tf = EMLRegression.filter_real_domain(x, y, target.fn)
+    @test length(xf) <= 3
+    @test length(yf) == length(xf)
+    @test length(tf) == length(xf)
+    @test all(isfinite, real.(tf))
+    @test all(abs.(imag.(tf)) .< 1.0e-12)
+end
+
+@testset "paper-aligned grid data returns finite targets" begin
+    target = get_target(:eml_depth2)
+    x, y, t = EMLRegression.make_grid_data(target.fn; lo=1.0, hi=1.2, step=0.1)
+    @test length(x) == length(y) == length(t)
+    @test !isempty(x)
 end

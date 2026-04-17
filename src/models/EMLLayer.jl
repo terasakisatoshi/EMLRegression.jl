@@ -14,6 +14,7 @@ end
 
 const _EML_EXP_REAL_LIMIT = 40.0
 const _EML_NODE_ABS_LIMIT = 1.0e6
+const _BYPASS_THR = 1.0 - eps(Float64)
 
 EMLTreeLayer(tree; init_strategy::Symbol=:small_gaussian) = EMLTreeLayer(tree, init_strategy)
 
@@ -164,3 +165,231 @@ function _collect_node_outputs!(outputs, layer::EMLTreeLayer, node_id::Int, x, p
 end
 
 ChainRulesCore.@non_differentiable _child_id_from_symbol(::Any...)
+
+struct EMLTree <: Lux.AbstractLuxLayer
+    depth::Int
+    n_leaves::Int
+    n_internal::Int
+    eml_clamp::Float64
+    init_strategy::Symbol
+    init_scale::Float64
+end
+
+function EMLTree(; depth::Int, eml_clamp::Float64=1.0e300, init_strategy::Symbol=:biased, init_scale::Float64=1.0)
+    depth >= 1 || throw(ArgumentError("depth must be at least 1"))
+    n_leaves = 2^depth
+    n_internal = n_leaves - 1
+    return EMLTree(depth, n_leaves, n_internal, eml_clamp, init_strategy, init_scale)
+end
+
+function Lux.initialparameters(rng::LehmerRNG, tree::EMLTree)
+    leaf_logits, blend_logits = initialize_logits(rng, tree.depth; strategy=tree.init_strategy, scale=tree.init_scale)
+    return (; leaf_logits, blend_logits)
+end
+
+function Lux.initialstates(::LehmerRNG, ::EMLTree)
+    return (; tau_leaf=1.0, tau_gate=1.0, leaf_probs=nothing, gate_probs=nothing, eml_outputs=nothing)
+end
+
+function initialize_logits(rng::LehmerRNG, depth::Int; strategy::Symbol=:biased, scale::Float64=1.0)
+    n_leaves = 2^depth
+    n_internal = n_leaves - 1
+    if strategy === :manual
+        leaf_init = zeros(Float64, n_leaves, 3)
+        gate_init = zeros(Float64, n_internal, 2)
+    elseif strategy === :biased
+        leaf_init = randn(rng, Float64, n_leaves, 3) .* scale
+        leaf_init[:, 1] .+= 2.0
+        gate_init = randn(rng, Float64, n_internal, 2) .* scale .+ 4.0
+    elseif strategy === :uniform
+        leaf_init = randn(rng, Float64, n_leaves, 3) .* scale
+        gate_init = randn(rng, Float64, n_internal, 2) .* scale .+ 4.0
+    elseif strategy === :xy_biased
+        leaf_init = randn(rng, Float64, n_leaves, 3) .* scale
+        leaf_init[:, 2] .+= 1.0
+        leaf_init[:, 3] .+= 1.0
+        gate_init = randn(rng, Float64, n_internal, 2) .* scale .+ 4.0
+    elseif strategy === :random_hot
+        leaf_init = randn(rng, Float64, n_leaves, 3) .* scale
+        hot_idx = rand(rng, 1:3, n_leaves)
+        for i in 1:n_leaves
+            leaf_init[i, hot_idx[i]] += 3.0
+        end
+        gate_init = randn(rng, Float64, n_internal, 2) .* scale .+ 3.0
+        open_mask = rand(rng, n_internal, 2) .< 0.25
+        gate_init[open_mask] .-= 6.0
+    else
+        throw(ArgumentError("unsupported init strategy: $(strategy)"))
+    end
+    return leaf_init, gate_init
+end
+
+function (tree::EMLTree)(xy, ps, st)
+    x, y = _to_complex_pair(xy)
+    tau_leaf = get(st, :tau_leaf, 1.0)
+    tau_gate = get(st, :tau_gate, 1.0)
+
+    leaf_probs = _softmax_rows(ps.leaf_logits, tau_leaf)
+    candidates = hcat(
+        fill(1.0 + 0.0im, length(x)),
+        x,
+        y,
+    )
+    current_level = Matrix{ComplexF64}(candidates * leaf_probs')
+    gate_prob_levels = ()
+    eml_output_levels = ()
+    node_idx = 1
+
+    while size(current_level, 2) > 1
+        n_pairs = size(current_level, 2) ÷ 2
+        gate_rows = ntuple(n_pairs) do pair_idx
+            raw = @view ps.blend_logits[node_idx + pair_idx - 1, :]
+            1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
+        end
+
+        next_columns = ntuple(n_pairs) do pair_idx
+            gate = gate_rows[pair_idx]
+            left_child = current_level[:, 2 * pair_idx - 1]
+            right_child = current_level[:, 2 * pair_idx]
+            left_input = _complex_blend(left_child, gate[1])
+            right_input = _complex_blend(right_child, gate[2])
+            _sanitize_and_clamp_vector(eml(left_input, right_input), tree.eml_clamp)
+        end
+
+        current_level = hcat(next_columns...)
+        gates = vcat(ntuple(pair_idx -> reshape(gate_rows[pair_idx], 1, :), n_pairs)...)
+        gate_prob_levels = (gate_prob_levels..., Matrix(gates))
+        eml_output_levels = (eml_output_levels..., vcat(next_columns...))
+        node_idx += n_pairs
+    end
+
+    gate_probs = isempty(gate_prob_levels) ? zeros(Float64, 0, 2) : reduce(vcat, gate_prob_levels)
+    eml_outputs = isempty(eml_output_levels) ? ComplexF64[] : vcat(eml_output_levels...)
+    aux = (; tau_leaf, tau_gate, leaf_probs, gate_probs, eml_outputs)
+    return vec(current_level[:, 1]), aux
+end
+
+function _to_complex_pair(xy::Tuple)
+    length(xy) == 2 || throw(ArgumentError("EMLTree expects (x, y) inputs"))
+    return ComplexF64.(xy[1]), ComplexF64.(xy[2])
+end
+
+function _softmax_rows(logits::AbstractMatrix{<:Real}, tau::Real)
+    scaled = logits ./ max(tau, 1.0e-6)
+    shifted = scaled .- maximum(scaled; dims=2)
+    weights = exp.(shifted)
+    return weights ./ sum(weights; dims=2)
+end
+
+function _complex_blend(children::AbstractMatrix{ComplexF64}, gate_column::AbstractVector{<:Real})
+    blended = similar(children)
+    @inbounds for col in axes(children, 2)
+        gate = gate_column[col]
+        if gate > _BYPASS_THR
+            blended[:, col] .= 1.0 + 0.0im
+        else
+            oml = 1.0 - gate
+            @views for row in axes(children, 1)
+                z = children[row, col]
+                blended[row, col] = ComplexF64(gate + oml * real(z), oml * imag(z))
+            end
+        end
+    end
+    return blended
+end
+
+function _complex_blend(child::AbstractVector{ComplexF64}, gate::Real)
+    if gate > _BYPASS_THR
+        return fill(1.0 + 0.0im, length(child))
+    end
+    oml = 1.0 - gate
+    return map(child) do z
+        ComplexF64(gate + oml * real(z), oml * imag(z))
+    end
+end
+
+function _sanitize_and_clamp_matrix(values::AbstractMatrix{ComplexF64}, limit::Real)
+    return map(values) do z
+        complex(_sanitize_scalar(real(z), limit), _sanitize_scalar(imag(z), limit))
+    end
+end
+
+function _sanitize_and_clamp_vector(values::AbstractVector{ComplexF64}, limit::Real)
+    return map(values) do z
+        complex(_sanitize_scalar(real(z), limit), _sanitize_scalar(imag(z), limit))
+    end
+end
+
+function _sanitize_scalar(x::Real, limit::Real)
+    if isnan(x)
+        return 0.0
+    elseif isinf(x)
+        return signbit(x) ? -limit : limit
+    else
+        return clamp(x, -limit, limit)
+    end
+end
+
+function init_from_expr!(ps, expr::AbstractString; k::Float64=32.0)
+    parsed = parse_eml_expr(expr)
+    depth = _expr_depth(parsed)
+    size(ps.leaf_logits, 1) == 2^depth || throw(ArgumentError("expression depth $(depth) does not match parameter tree"))
+
+    fill!(ps.leaf_logits, -k)
+    ps.leaf_logits[:, 1] .= k
+    fill!(ps.blend_logits, k)
+
+    recurse(node, level, pos) = _init_expr_recurse!(ps, node, depth, level, pos, k)
+    recurse(parsed, 0, 1)
+    return parsed
+end
+
+function parse_eml_expr(s::AbstractString)
+    stripped = strip(s)
+    stripped in ("1", "x", "y") && return stripped
+    if startswith(stripped, "EML[") && endswith(stripped, "]")
+        inner = stripped[5:end-1]
+        depth = 0
+        for (idx, ch) in enumerate(inner)
+            if ch == '['
+                depth += 1
+            elseif ch == ']'
+                depth -= 1
+            elseif ch == ',' && depth == 0
+                return ("EML", parse_eml_expr(inner[1:idx-1]), parse_eml_expr(inner[idx+1:end]))
+            end
+        end
+    end
+    throw(ArgumentError("Cannot parse EML expression: $(s)"))
+end
+
+function _expr_depth(node)
+    node isa AbstractString && return 0
+    return 1 + max(_expr_depth(node[2]), _expr_depth(node[3]))
+end
+
+function _flat_node_idx(tree_depth::Int, level_from_top::Int, pos_in_level::Int)
+    return 2^tree_depth - 2^(level_from_top + 1) + pos_in_level
+end
+
+function _init_expr_recurse!(ps, node, tree_depth::Int, level::Int, pos::Int, k::Float64)
+    if node isa AbstractString
+        if level == tree_depth
+            choice_map = Dict("1" => 1, "x" => 2, "y" => 3)
+            ps.leaf_logits[pos, :] .= -k
+            ps.leaf_logits[pos, choice_map[node]] = k
+        end
+        return
+    end
+
+    _, left, right = node
+    node_idx = _flat_node_idx(tree_depth, level, pos)
+    left_is_one = left isa AbstractString && left == "1"
+    right_is_one = right isa AbstractString && right == "1"
+    ps.blend_logits[node_idx, 1] = left_is_one ? k : -k
+    ps.blend_logits[node_idx, 2] = right_is_one ? k : -k
+
+    left_is_one || _init_expr_recurse!(ps, left, tree_depth, level + 1, 2 * pos - 1, k)
+    right_is_one || _init_expr_recurse!(ps, right, tree_depth, level + 1, 2 * pos, k)
+    return
+end

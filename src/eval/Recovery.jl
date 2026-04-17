@@ -3,39 +3,33 @@ using StableRNGs: StableRNG
 """
     run_experiment(cfg; rng=StableRNG(1))
 
-学習、snapping、blind recovery 判定までをまとめて実行します。
+学習後に snap 解析と hard projection を行い、paper-style の success 指標を返します。
 """
 function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     training = run_training(cfg; rng=rng)
     target = get_target(cfg.target)
-    variables = target.arity == 1 ? (:x,) : (:x, :y)
-    master_tree = build_master_tree(depth=target.depth, variables=variables)
-    layer = EMLTreeLayer(master_tree; init_strategy=cfg.init_strategy)
-    xs = sample_domain(target, cfg.batch_size; rng_seed=cfg.steps + 1)
-    ys = evaluate_target(target, xs)
-    recovered = search_recovered_tree(layer, training.params, master_tree, xs, ys)
-    recovered_snap_status = snap_status(layer, training.params; margin_threshold=cfg.margin_threshold)
-    ambiguous_nodes = ambiguous_node_count(layer, training.params; margin_threshold=cfg.margin_threshold)
-    diagnostics = snap_diagnostics(layer, training.params; margin_threshold=cfg.margin_threshold)
-    preds = evaluate_recovered(recovered, master_tree, xs)
-    validation_loss = _mse(preds, ys)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale)
+    snap_info = analyze_snap(training.params; snap_threshold=cfg.snap_threshold)
+    snapped = hard_project(training.params)
+    snap_mse, snap_max_real, snap_max_imag = evaluate(tree, snapped, training.state, x_train, y_train, t_train; tau=cfg.tau_hard)
 
     verdict = recovery_verdict(
-        train_loss=isempty(training.metrics[:train_loss]) ? Inf : training.metrics[:train_loss][end],
-        validation_loss=validation_loss,
-        snap_status=recovered_snap_status,
-        structure_match=structure_match(target.tree, recovered),
-        ambiguous_nodes=ambiguous_nodes,
-        numerical_match=numerical_match(preds, ys),
-        training_failure_reason=training.failure_reason,
-        snap_diagnostics=diagnostics,
+        snap_mse=snap_mse,
+        snap_max_real=snap_max_real,
+        snap_max_imag=snap_max_imag,
+        n_uncertain=snap_info.n_uncertain,
+        fit_success_thr=cfg.fit_success_thr,
+        success_thr=cfg.success_thr,
+        max_uncertain_success=cfg.max_uncertain_success,
+        hardening_iter=training.summary[:hardening_iter],
     )
 
     return (
         training=training,
         recovery=verdict,
-        recovered_tree=recovered,
-        master_tree=master_tree,
-        target_tree=target.tree,
+        snap=snap_info,
+        snapped_params=snapped,
     )
 end
