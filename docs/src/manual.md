@@ -28,11 +28,22 @@
 ~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-カテゴリ別テストを見たい場合は `test_args` を使います。
+並列実行したい場合は `test_args` で worker 数を渡します。
 
 ```bash
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["models"])'
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training"])'
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["--jobs=4"])'
+```
+
+利用可能なテストファイルは次で確認できます。
+
+```bash
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["--list"])'
+```
+
+特定ファイルだけを流したい場合はファイル名で絞り込みます。
+
+```bash
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training/test_train_loop"])'
 ```
 
 ## 3. 単発実験を回す

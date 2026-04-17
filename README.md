@@ -67,12 +67,22 @@
 ~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test()'
 ```
 
-カテゴリ別テスト例:
+並列実行:
 
 ```bash
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["models"])'
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training"])'
-~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["targets"])'
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["--jobs=4"])'
+```
+
+利用可能なテストファイル一覧:
+
+```bash
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["--list"])'
+```
+
+ファイル単位の絞り込み例:
+
+```bash
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training/test_train_loop"])'
 ```
 
 ## 単発実験
