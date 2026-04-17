@@ -47,6 +47,33 @@ function finite_or_flag(values)
 end
 
 """
+    any_bad_grad(grads)
+
+勾配木のどこかに NaN または Inf が含まれているかを判定します。
+"""
+function any_bad_grad(grads)
+    return _any_bad_grad(grads)
+end
+
+_any_bad_grad(::Nothing) = false
+_any_bad_grad(x::Number) = !isfinite(x)
+_any_bad_grad(x::AbstractArray) = any(z -> !isfinite(z), x)
+_any_bad_grad(x::Tuple) = any(_any_bad_grad, x)
+_any_bad_grad(x::NamedTuple) = any(_any_bad_grad, values(x))
+_any_bad_grad(x) = false
+
+"""
+    should_restart(nan_streak, nan_restarts, cfg)
+
+再起動条件を集約します。
+"""
+function should_restart(nan_streak::Int, nan_restarts::Int, cfg)
+    return cfg.nan_restart_patience > 0 &&
+        nan_streak >= cfg.nan_restart_patience &&
+        (cfg.max_nan_restarts <= 0 || nan_restarts < cfg.max_nan_restarts)
+end
+
+"""
     clamp_complex_magnitude(values, limit)
 
 複素値の絶対値を上限 `limit` に収めます。

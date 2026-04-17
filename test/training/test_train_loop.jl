@@ -39,6 +39,29 @@ end
     @test all(isfinite, result.metrics[:tau])
 end
 
+@testset "depth3 paper-budget run records instability without crashing" begin
+    cfg = TrainConfig(
+        target=:eml_depth3,
+        depth=3,
+        init_strategy=:biased,
+        search_iters=6000,
+        hardening_iters=2000,
+        seed=137,
+    )
+    result = run_training(cfg; capture_diagnostics=true)
+    @test result.failure_reason == EMLRegression.no_failure
+    @test result.nonfinite_steps > 0 || result.nan_restarts > 0
+    @test result.nonfinite_steps == result.summary[:nonfinite_steps]
+    @test result.nan_restarts == result.summary[:nan_restarts]
+    @test haskey(result.diagnostics, :phase)
+    @test haskey(result.diagnostics, :tau_gate)
+    @test !isempty(result.diagnostics[:phase])
+    @test length(result.diagnostics[:phase]) <= cfg.diagnostics_limit
+    @test length(result.diagnostics[:tau_gate]) == length(result.diagnostics[:phase])
+    @test all(isfinite, result.diagnostics[:tau_gate])
+    @test all(phase -> phase in (:search, :hardening), result.diagnostics[:phase])
+end
+
 @testset "training accepts manual expression initialization" begin
     cfg = TrainConfig(
         target=:eml_depth2,

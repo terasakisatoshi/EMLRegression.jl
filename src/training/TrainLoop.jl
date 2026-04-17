@@ -3,7 +3,8 @@ using Lux
 using Optimisers
 using Zygote
 
-function run_training(cfg::TrainConfig; rng=StableRNG(1))
+function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=false)
+    rng = isnothing(rng) ? StableRNG(cfg.seed) : rng
     target = get_target(cfg.target)
     x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
     tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
@@ -25,6 +26,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         :nan_restarts => 0,
         :nonfinite_steps => 0,
     )
+    diagnostics = Dict{Symbol,Vector{Any}}()
 
     best_soft_loss = Inf
     best_soft_state = deepcopy(ps)
@@ -54,6 +56,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
 
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
         opt = Optimisers.Adam(cfg.lr * lr_mult)
+        tau_state = _state_with_tau(st, tau)
 
         # Run the faithful composite loss once before autodiff so nonfinite states
         # are rejected by the restart logic instead of reaching Zygote.
@@ -69,11 +72,18 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
         entropy = regs.entropy
         binarity = regs.binarity
+        if capture_diagnostics
+            _push_diagnostic!(
+                diagnostics,
+                _training_diagnostics_snapshot(phase, it, tau_state, ps, total),
+                cfg.diagnostics_limit,
+            )
+        end
 
         if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
-            if nan_streak >= cfg.nan_restart_patience
+            if should_restart(nan_streak, nan_restarts, cfg)
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
                 nan_streak = 0
@@ -96,6 +106,26 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
             data_loss = _data_loss(pred, t_train)
             _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
         end
+        if any_bad_grad(grads)
+            summary[:nonfinite_steps] += 1
+            nan_streak += 1
+            if should_restart(nan_streak, nan_restarts, cfg)
+                ps = deepcopy(best_soft_state)
+                opt_state = Optimisers.setup(opt, ps)
+                nan_streak = 0
+                nan_restarts += 1
+                hard_success_streak = 0
+                summary[:nan_restarts] = nan_restarts
+            end
+            if capture_diagnostics
+                _push_diagnostic!(
+                    diagnostics,
+                    _training_diagnostics_snapshot(phase, it, tau_state, ps, total),
+                    cfg.diagnostics_limit,
+                )
+            end
+            continue
+        end
         grads = _clip_gradients(grads, cfg.grad_clip_norm)
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
 
@@ -111,11 +141,18 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
         entropy = regs.entropy
         binarity = regs.binarity
+        if capture_diagnostics
+            _push_diagnostic!(
+                diagnostics,
+                _training_diagnostics_snapshot(phase, it, tau_state, ps, total),
+                cfg.diagnostics_limit,
+            )
+        end
 
         if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
-            if nan_streak >= cfg.nan_restart_patience
+            if should_restart(nan_streak, nan_restarts, cfg)
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
                 nan_streak = 0
@@ -153,7 +190,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     end
 
     summary[:hardening_iter] = hardening_iter
-    return TrainingResult(cfg, metrics, failure_reason, ps, st, summary)
+    return TrainingResult(cfg, metrics, failure_reason, ps, st, summary, summary[:nonfinite_steps], nan_restarts, diagnostics)
 end
 
 function _apply_initialization!(rng, ps, cfg::TrainConfig)
@@ -204,6 +241,34 @@ end
 
 function _state_with_tau(st, tau::Float64)
     return (; tau_leaf=tau, tau_gate=tau, leaf_probs=get(st, :leaf_probs, nothing), gate_probs=get(st, :gate_probs, nothing), eml_outputs=get(st, :eml_outputs, nothing))
+end
+
+function _training_diagnostics_snapshot(phase_name, iter, tau_state, ps, loss)
+    max_gate_logit = isempty(ps.blend_logits) ? 0.0 : maximum(abs, ps.blend_logits)
+    max_leaf_logit = isempty(ps.leaf_logits) ? 0.0 : maximum(abs, ps.leaf_logits)
+    return (
+        phase=phase_name,
+        iter=iter,
+        tau_leaf=tau_state.tau_leaf,
+        tau_gate=tau_state.tau_gate,
+        max_gate_logit=max_gate_logit,
+        max_leaf_logit=max_leaf_logit,
+        loss=loss,
+    )
+end
+
+function _push_diagnostic!(trace::Dict{Symbol,Vector{Any}}, snapshot, limit::Int)
+    limit <= 0 && return trace
+    for (key, value) in pairs(snapshot)
+        values = get!(trace, key) do
+            Any[]
+        end
+        if length(values) >= limit
+            popfirst!(values)
+        end
+        push!(values, value)
+    end
+    return trace
 end
 
 function _schedule(cfg::TrainConfig, phase::Symbol, hard_step::Int)
