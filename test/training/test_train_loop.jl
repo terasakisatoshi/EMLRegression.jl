@@ -1,5 +1,7 @@
 using Test
+using Lux
 using StableRNGs
+using Zygote
 using EMLRegression
 
 @testset "search and hardening schedule transitions" begin
@@ -105,4 +107,50 @@ end
     @test sqrt(sq_norm) <= 1.0 + 1.0e-12
     @test clipped.leaf_logits[1, 1] < grads.leaf_logits[1, 1]
     @test clipped.blend_logits[1, 1] < grads.blend_logits[1, 1]
+end
+
+@testset "paper-budget saturated gates remain differentiable" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
+        lam_inter=1.0e-4,
+        inter_threshold=50.0,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=2, init_strategy=:biased)
+    ps = (
+        leaf_logits=[
+            5.21454 0.289582 -6.85149;
+            -4.70773 -4.0905 9.98371;
+            -8.28137 -8.53061 13.5623;
+            0.183201 5.60814 -7.89822
+        ],
+        blend_logits=[
+            3.57914 -8.22044;
+            -12.9837 -3.10144;
+            6.15721 -10.6534
+        ],
+    )
+    tau = 0.08250917849561924
+    loss(ps_current) = begin
+        pred, regs = EMLRegression.forward_with_regularizers(
+            tree,
+            (x_train, y_train),
+            ps_current;
+            tau_leaf=tau,
+            tau_gate=tau,
+            inter_threshold=cfg.inter_threshold,
+        )
+        data_loss = EMLRegression._safe_mean_abs2(pred .- t_train)
+        data_loss + 0.014 * regs.entropy + 0.014 * regs.binarity + cfg.lam_inter * regs.inter_penalty
+    end
+
+    @test isfinite(loss(ps))
+    grads = only(Zygote.gradient(loss, ps))
+    @test size(grads.leaf_logits) == size(ps.leaf_logits)
+    @test size(grads.blend_logits) == size(ps.blend_logits)
 end

@@ -14,8 +14,6 @@ end
 
 const _EML_EXP_REAL_LIMIT = 40.0
 const _EML_NODE_ABS_LIMIT = 1.0e6
-const _BYPASS_THR = 1.0 - eps(Float64)
-
 EMLTreeLayer(tree; init_strategy::Symbol=:small_gaussian) = EMLTreeLayer(tree, init_strategy)
 
 function Lux.initialparameters(rng::LehmerRNG, layer::EMLTreeLayer)
@@ -225,10 +223,14 @@ function initialize_logits(rng::LehmerRNG, depth::Int; strategy::Symbol=:biased,
 end
 
 function (tree::EMLTree)(xy, ps, st)
-    x, y = _to_complex_pair(xy)
     tau_leaf = get(st, :tau_leaf, 1.0)
     tau_gate = get(st, :tau_gate, 1.0)
+    pred, _ = forward_with_aux(tree, xy, ps; tau_leaf=tau_leaf, tau_gate=tau_gate)
+    return pred, st
+end
 
+function forward_with_aux(tree::EMLTree, xy, ps; tau_leaf::Real=1.0, tau_gate::Real=1.0)
+    x, y = _to_complex_pair(xy)
     leaf_probs = _softmax_rows(ps.leaf_logits, tau_leaf)
     candidates = hcat(
         fill(1.0 + 0.0im, length(x)),
@@ -242,24 +244,16 @@ function (tree::EMLTree)(xy, ps, st)
 
     while size(current_level, 2) > 1
         n_pairs = size(current_level, 2) ÷ 2
-        gate_rows = ntuple(n_pairs) do pair_idx
-            raw = @view ps.blend_logits[node_idx + pair_idx - 1, :]
-            1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
-        end
-
-        next_columns = ntuple(n_pairs) do pair_idx
-            gate = gate_rows[pair_idx]
-            left_child = current_level[:, 2 * pair_idx - 1]
-            right_child = current_level[:, 2 * pair_idx]
-            left_input = _complex_blend(left_child, gate[1])
-            right_input = _complex_blend(right_child, gate[2])
-            _sanitize_and_clamp_vector(eml(left_input, right_input), tree.eml_clamp)
-        end
-
-        current_level = hcat(next_columns...)
-        gates = vcat(ntuple(pair_idx -> reshape(gate_rows[pair_idx], 1, :), n_pairs)...)
+        raw = @view ps.blend_logits[node_idx:(node_idx + n_pairs - 1), :]
+        gates = 1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
+        left_children = @view current_level[:, 1:2:size(current_level, 2)]
+        right_children = @view current_level[:, 2:2:size(current_level, 2)]
+        left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)
+        right_input = _complex_blend(right_children, vec(gates[:, 2]), tree.eml_clamp)
+        next_level = _sanitize_and_clamp_matrix(eml(left_input, right_input), tree.eml_clamp)
+        current_level = next_level
         gate_prob_levels = (gate_prob_levels..., Matrix(gates))
-        eml_output_levels = (eml_output_levels..., vcat(next_columns...))
+        eml_output_levels = (eml_output_levels..., vec(next_level))
         node_idx += n_pairs
     end
 
@@ -281,30 +275,20 @@ function _softmax_rows(logits::AbstractMatrix{<:Real}, tau::Real)
     return weights ./ sum(weights; dims=2)
 end
 
-function _complex_blend(children::AbstractMatrix{ComplexF64}, gate_column::AbstractVector{<:Real})
-    blended = similar(children)
-    @inbounds for col in axes(children, 2)
-        gate = gate_column[col]
-        if gate > _BYPASS_THR
-            blended[:, col] .= 1.0 + 0.0im
-        else
-            oml = 1.0 - gate
-            @views for row in axes(children, 1)
-                z = children[row, col]
-                blended[row, col] = ComplexF64(gate + oml * real(z), oml * imag(z))
-            end
-        end
-    end
-    return blended
+function _complex_blend(children::AbstractMatrix{ComplexF64}, gate_column::AbstractVector{<:Real}, limit::Real)
+    gates = reshape(gate_column, 1, :)
+    oml = 1.0 .- gates
+    real_part = _sanitize_scalar.(real.(children), limit)
+    imag_part = _sanitize_scalar.(imag.(children), limit)
+    return ComplexF64.(gates .+ oml .* real_part, oml .* imag_part)
 end
 
-function _complex_blend(child::AbstractVector{ComplexF64}, gate::Real)
-    if gate > _BYPASS_THR
-        return fill(1.0 + 0.0im, length(child))
-    end
+function _complex_blend(child::AbstractVector{ComplexF64}, gate::Real, limit::Real)
     oml = 1.0 - gate
     return map(child) do z
-        ComplexF64(gate + oml * real(z), oml * imag(z))
+        rz = _sanitize_scalar(real(z), limit)
+        iz = _sanitize_scalar(imag(z), limit)
+        ComplexF64(gate + oml * rz, oml * iz)
     end
 end
 

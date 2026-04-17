@@ -55,38 +55,22 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
         opt = Optimisers.Adam(cfg.lr * lr_mult)
 
-        grads = _autodiff_gradient(ps) do ps_current
-            pred, aux = Lux.apply(tree, (x_train, y_train), ps_current, _state_with_tau(st, tau))
-            total, _, _, _, _, _, _ = compute_losses(
-                pred,
-                t_train,
-                aux.leaf_probs,
-                aux.gate_probs,
-                aux.eml_outputs,
-                lam_ent,
-                lam_bin,
-                cfg.lam_inter,
-                cfg.inter_threshold,
-            )
-            total
-        end
-        grads = _clip_gradients(grads, cfg.grad_clip_norm)
-        opt_state, ps = Optimisers.update(opt_state, ps, grads)
-
-        pred, aux = Lux.apply(tree, (x_train, y_train), ps, _state_with_tau(st, tau))
-        total, data_loss, entropy, binarity, _, _, _ = compute_losses(
-            pred,
-            t_train,
-            aux.leaf_probs,
-            aux.gate_probs,
-            aux.eml_outputs,
-            lam_ent,
-            lam_bin,
-            cfg.lam_inter,
-            cfg.inter_threshold,
+        # Run the faithful composite loss once before autodiff so nonfinite states
+        # are rejected by the restart logic instead of reaching Zygote.
+        pred, regs = forward_with_regularizers(
+            tree,
+            (x_train, y_train),
+            ps;
+            tau_leaf=tau,
+            tau_gate=tau,
+            inter_threshold=cfg.inter_threshold,
         )
+        data_loss = _data_loss(pred, t_train)
+        total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
+        entropy = regs.entropy
+        binarity = regs.binarity
 
-        if !isfinite(total)
+        if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
             if nan_streak >= cfg.nan_restart_patience
@@ -94,6 +78,49 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
                 opt_state = Optimisers.setup(opt, ps)
                 nan_streak = 0
                 nan_restarts += 1
+                hard_success_streak = 0
+                summary[:nan_restarts] = nan_restarts
+            end
+            continue
+        end
+
+        grads = _autodiff_gradient(ps) do ps_current
+            pred, regs = forward_with_regularizers(
+                tree,
+                (x_train, y_train),
+                ps_current;
+                tau_leaf=tau,
+                tau_gate=tau,
+                inter_threshold=cfg.inter_threshold,
+            )
+            data_loss = _data_loss(pred, t_train)
+            _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
+        end
+        grads = _clip_gradients(grads, cfg.grad_clip_norm)
+        opt_state, ps = Optimisers.update(opt_state, ps, grads)
+
+        pred, regs = forward_with_regularizers(
+            tree,
+            (x_train, y_train),
+            ps;
+            tau_leaf=tau,
+            tau_gate=tau,
+            inter_threshold=cfg.inter_threshold,
+        )
+        data_loss = _data_loss(pred, t_train)
+        total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
+        entropy = regs.entropy
+        binarity = regs.binarity
+
+        if !(isfinite(total) && isfinite(data_loss))
+            summary[:nonfinite_steps] += 1
+            nan_streak += 1
+            if nan_streak >= cfg.nan_restart_patience
+                ps = deepcopy(best_soft_state)
+                opt_state = Optimisers.setup(opt, ps)
+                nan_streak = 0
+                nan_restarts += 1
+                hard_success_streak = 0
                 summary[:nan_restarts] = nan_restarts
             end
             continue
@@ -154,33 +181,22 @@ function compute_losses(
     lam_sparse::Float64=0.0,
     uncertainty_power::Float64=2.0,
 )
-    data_loss = _mse(pred, target)
-    eps = 1.0e-12
-
-    leaf_max = vec(maximum(leaf_probs; dims=2))
-    leaf_unc = clamp.((1.0 .- leaf_max) ./ (2.0 / 3.0), 0.0, 1.0) .^ uncertainty_power
-    leaf_ent = vec(-sum(leaf_probs .* log.(leaf_probs .+ eps); dims=2))
-    entropy = isempty(leaf_ent) ? 0.0 : sum(leaf_ent .* leaf_unc) / length(leaf_ent)
-
-    gate_unc = clamp.(1.0 .- abs.(2.0 .* gate_probs .- 1.0), 0.0, 1.0) .^ uncertainty_power
-    gate_bin = gate_probs .* (1.0 .- gate_probs)
-    binarity = isempty(gate_bin) ? 0.0 : sum(gate_bin .* gate_unc) / length(gate_bin)
-
-    inter_penalty = 0.0
-    if lam_inter > 0 && !isempty(eml_outputs)
-        excess = max.(abs.(eml_outputs) .- inter_threshold, 0.0)
-        inter_penalty = sum(abs2, excess) / length(excess)
-    end
-
-    sparse = isempty(gate_probs) ? 0.0 : sum(1.0 .- gate_probs) / length(gate_probs)
-    total = data_loss + lam_ent * entropy + lam_bin * binarity + lam_inter * inter_penalty + lam_sparse * sparse
-    ambiguity = isempty(gate_unc) ? mean(leaf_unc) : (sum(leaf_unc) + sum(gate_unc)) / (length(leaf_unc) + length(gate_unc))
+    data_loss = _data_loss(pred, target)
+    entropy, binarity, inter_penalty, sparse, ambiguity = _regularization_stats(
+        leaf_probs,
+        gate_probs,
+        eml_outputs,
+        inter_threshold;
+        lam_inter=lam_inter,
+        uncertainty_power=uncertainty_power,
+    )
+    total = _combine_losses(data_loss, entropy, binarity, inter_penalty, lam_ent, lam_bin, lam_inter) + lam_sparse * sparse
     return total, data_loss, entropy, binarity, inter_penalty, sparse, ambiguity
 end
 
 function evaluate(tree::EMLTree, ps, st, x_data, y_data, targets; tau::Float64=0.01)
-    pred, _ = Lux.apply(tree, (x_data, y_data), ps, _state_with_tau(st, tau))
-    mse = _mse(pred, targets)
+    pred, _ = forward_with_aux(tree, (x_data, y_data), ps; tau_leaf=tau, tau_gate=tau)
+    mse = _safe_mean_abs2(pred .- targets)
     max_real = maximum(abs.(real.(pred) .- real.(targets)))
     max_imag = maximum(abs.(imag.(pred)))
     return mse, max_real, max_imag
@@ -203,9 +219,160 @@ function _schedule(cfg::TrainConfig, phase::Symbol, hard_step::Int)
     return tau, lam_ent, lam_bin, lr_mult
 end
 
-function _mse(preds, ys)
+function _finite_residuals(preds, ys)
     diffs = preds .- ys
-    return sum(abs2, diffs) / max(length(diffs), 1)
+    residuals_finite = all(isfinite, real.(diffs)) && all(isfinite, imag.(diffs))
+    return diffs, residuals_finite
+end
+
+function _data_loss(pred, target)
+    diffs, residuals_finite = _finite_residuals(pred, target)
+    return residuals_finite ? _safe_mean_abs2(diffs) : Inf
+end
+
+function _combine_losses(data_loss, entropy, binarity, inter_penalty, lam_ent, lam_bin, lam_inter)
+    return data_loss + lam_ent * entropy + lam_bin * binarity + lam_inter * inter_penalty
+end
+
+function _regularization_stats(
+    leaf_probs,
+    gate_probs,
+    eml_outputs,
+    inter_threshold;
+    lam_inter::Float64=0.0,
+    uncertainty_power::Float64=2.0,
+)
+    eps = 1.0e-12
+
+    if isempty(leaf_probs)
+        entropy = 0.0
+        leaf_unc = Float64[]
+    else
+        leaf_max = vec(maximum(leaf_probs; dims=2))
+        leaf_unc = clamp.((1.0 .- leaf_max) ./ (2.0 / 3.0), 0.0, 1.0) .^ uncertainty_power
+        leaf_ent = vec(-sum(leaf_probs .* log.(leaf_probs .+ eps); dims=2))
+        entropy = isempty(leaf_ent) ? 0.0 : sum(leaf_ent .* leaf_unc) / length(leaf_ent)
+    end
+
+    if isempty(gate_probs)
+        gate_unc = Float64[]
+        gate_bin = Float64[]
+        binarity = 0.0
+    else
+        gate_unc = clamp.(1.0 .- abs.(2.0 .* gate_probs .- 1.0), 0.0, 1.0) .^ uncertainty_power
+        gate_bin = gate_probs .* (1.0 .- gate_probs)
+        binarity = isempty(gate_bin) ? 0.0 : sum(gate_bin .* gate_unc) / length(gate_bin)
+    end
+
+    inter_penalty = 0.0
+    if lam_inter > 0 && !isempty(eml_outputs)
+        excess = max.(abs.(eml_outputs) .- inter_threshold, 0.0)
+        inter_penalty = sum(abs2, excess) / length(excess)
+    end
+
+    sparse = isempty(gate_probs) ? 0.0 : sum(1.0 .- gate_probs) / length(gate_probs)
+    ambiguity = isempty(gate_unc) ? (isempty(leaf_unc) ? 0.0 : sum(leaf_unc) / length(leaf_unc)) : (sum(leaf_unc) + sum(gate_unc)) / (length(leaf_unc) + length(gate_unc))
+    return entropy, binarity, inter_penalty, sparse, ambiguity
+end
+
+function forward_with_regularizers(
+    tree::EMLTree,
+    xy,
+    ps;
+    tau_leaf::Float64=1.0,
+    tau_gate::Float64=1.0,
+    inter_threshold::Float64=50.0,
+    uncertainty_power::Float64=2.0,
+)
+    x, y = _to_complex_pair(xy)
+    leaf_probs = _softmax_rows(ps.leaf_logits, tau_leaf)
+    candidates = hcat(
+        fill(1.0 + 0.0im, length(x)),
+        x,
+        y,
+    )
+    current_level = Matrix{ComplexF64}(candidates * leaf_probs')
+    node_idx = 1
+    eps = 1.0e-12
+
+    if isempty(leaf_probs)
+        entropy = 0.0
+        leaf_unc_sum = 0.0
+        leaf_unc_count = 0
+    else
+        leaf_max = vec(maximum(leaf_probs; dims=2))
+        leaf_unc = clamp.((1.0 .- leaf_max) ./ (2.0 / 3.0), 0.0, 1.0) .^ uncertainty_power
+        leaf_ent = vec(-sum(leaf_probs .* log.(leaf_probs .+ eps); dims=2))
+        entropy = isempty(leaf_ent) ? 0.0 : sum(leaf_ent .* leaf_unc) / length(leaf_ent)
+        leaf_unc_sum = sum(leaf_unc)
+        leaf_unc_count = length(leaf_unc)
+    end
+
+    gate_binarity_sum = 0.0
+    gate_unc_sum = 0.0
+    gate_count = 0
+    sparse_sum = 0.0
+    inter_penalty_sum = 0.0
+    inter_count = 0
+
+    while size(current_level, 2) > 1
+        n_pairs = size(current_level, 2) ÷ 2
+        raw = @view ps.blend_logits[node_idx:(node_idx + n_pairs - 1), :]
+        gates = 1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
+        left_children = @view current_level[:, 1:2:size(current_level, 2)]
+        right_children = @view current_level[:, 2:2:size(current_level, 2)]
+        left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)
+        right_input = _complex_blend(right_children, vec(gates[:, 2]), tree.eml_clamp)
+        next_level = _sanitize_and_clamp_matrix(eml(left_input, right_input), tree.eml_clamp)
+        current_level = next_level
+        gate_unc = clamp.(1.0 .- abs.(2.0 .* gates .- 1.0), 0.0, 1.0) .^ uncertainty_power
+        gate_bin = gates .* (1.0 .- gates)
+        gate_binarity_sum += sum(gate_bin .* gate_unc)
+        gate_unc_sum += sum(gate_unc)
+        gate_count += length(gate_bin)
+        sparse_sum += sum(1.0 .- gates)
+
+        if !isempty(next_level)
+            eml_outputs = vec(next_level)
+            excess = max.(abs.(eml_outputs) .- inter_threshold, 0.0)
+            inter_penalty_sum += sum(abs2, excess)
+            inter_count += length(excess)
+        end
+        node_idx += n_pairs
+    end
+
+    pred = vec(current_level[:, 1])
+    binarity = gate_count == 0 ? 0.0 : gate_binarity_sum / gate_count
+    inter_penalty = inter_count == 0 ? 0.0 : inter_penalty_sum / inter_count
+    sparse = gate_count == 0 ? 0.0 : sparse_sum / gate_count
+    ambiguity_count = leaf_unc_count + gate_count
+    ambiguity = ambiguity_count == 0 ? 0.0 : (leaf_unc_sum + gate_unc_sum) / ambiguity_count
+    return pred, (; entropy, binarity, inter_penalty, sparse, ambiguity)
+end
+
+function _safe_mean_abs2(diffs)
+    scale = 0.0
+    sumsq = 1.0
+    count = 0
+    for z in diffs
+        mag = abs(z)
+        isfinite(mag) || return Inf
+        if mag > 0.0
+            if scale < mag
+                ratio = scale / mag
+                sumsq = 1.0 + sumsq * ratio * ratio
+                scale = mag
+            else
+                ratio = mag / scale
+                sumsq += ratio * ratio
+            end
+        end
+        count += 1
+    end
+    count == 0 && return 0.0
+    total = scale * (scale * (sumsq / count))
+    isfinite(total) || return Inf
+    return total
 end
 
 function _autodiff_gradient(loss_fn, ps)
