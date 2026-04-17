@@ -189,16 +189,15 @@ depth 5 と 6 でも 100% 戻ると述べています。
 
 その一方で、この small sample rerun からは次の偏りが暫定的に見えています。
 
-- `depth3` は random init 4 family すべてで依然 `0/1` success だが、この rerun では recorded な `nonfinite_steps=0`, `nan_restarts=0` まで改善した一方、`nonfinite_grad_steps` は `93-95` 残っている
-- `depth4` はこの sample では `biased`, `uniform`, `xy_biased` が `nonfinite_steps=0` だが、`nonfinite_grad_steps` は `3-32` 残る
+- `depth3` は random init 4 family すべてで依然 `0/1` success だが、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0` まで改善した
+- `depth4` はこの sample では `biased`, `uniform`, `xy_biased` が `nonfinite_steps=0`, `nonfinite_grad_steps=0`
 - ただし `depth4 random_hot` は `failure_reason=nonfinite_detected`, `nonfinite_steps=5000`, `nan_restarts=100` で依然として catastrophic
 
 という状態です。
 
 したがって、現在の結果を論文の成功率と直接比較するのは危険です。
 現状は「構造と実験導線はあるが、統計規模と最終性能は未再現」であり、
-ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点、
-さらに `nonfinite_grad_steps` が別立てで残っている点にも注意が必要です。
+ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点には注意が必要です。
 次の実装上の焦点候補は `depth3` の symbolic recovery 改善と `depth4 random_hot` の局所対策です。
 
 ## 8. 現実装の strict success 判定は論文本文より厳しい

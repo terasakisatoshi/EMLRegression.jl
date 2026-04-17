@@ -405,7 +405,7 @@ function forward_with_regularizers(
     while size(current_level, 2) > 1
         n_pairs = size(current_level, 2) ÷ 2
         raw = @view ps.blend_logits[node_idx:(node_idx + n_pairs - 1), :]
-        gates = clamp_probs.(1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6)))))
+        gates = _gate_probs(raw, tau_gate)
         left_children = @view current_level[:, 1:2:size(current_level, 2)]
         right_children = @view current_level[:, 2:2:size(current_level, 2)]
         left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)

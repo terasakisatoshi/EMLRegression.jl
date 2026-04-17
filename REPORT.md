@@ -17,7 +17,7 @@ Current work is in the measurement/reporting phase. The sweep and summary script
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update nonfinite loop is suppressed in this sample, while `depth3` still accumulates many scrubbed nonfinite-gradient steps and `depth4 random_hot` remains the main catastrophic numerical edge case.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, while symbolic recovery is still absent there and `depth4 random_hot` remains the main catastrophic numerical edge case.
 
 ## What Was Done
 
@@ -149,25 +149,26 @@ Additional regression coverage now exists for:
 This worktree now has a small local paper-budget rerun:
 
 - `pnas_d2_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=95`, `nan_restarts=0`
-- `pnas_d3_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
-- `pnas_d3_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
-- `pnas_d3_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
-- `pnas_d4_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=32`, `nan_restarts=0`
-- `pnas_d4_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=17`, `nan_restarts=0`
-- `pnas_d4_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=3`, `nan_restarts=0`
+- `pnas_d3_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `pnas_d4_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=5000`, `nonfinite_grad_steps=0`, `nan_restarts=100`, `failure_reason=nonfinite_detected`
 
 This sample is too small to replace the paper-scale tendency table, but it is large enough to suggest the next two debugging targets:
 
-- `depth3` no longer shows recorded forward/post-update nonfinite or restart pressure across the four random initialization families in this sample, but it is still `0/4` on symbolic recovery and still accumulates `nonfinite_grad_steps ≈ 93-95`.
-- `depth4` is forward-stable for `biased`, `uniform`, and `xy_biased` in this sample, but those runs still record `nonfinite_grad_steps` in the `3-32` range, while `random_hot` remains catastrophic.
+- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, but it is still `0/4` on symbolic recovery.
+- `depth4` is forward-stable for `biased`, `uniform`, and `xy_biased` in this sample with `nonfinite_grad_steps=0`, while `random_hot` remains catastrophic.
 
-Three training-path changes were active during this rerun:
+Four training-path changes were active during this rerun:
 
 - hardening now advances its temperature step even when an iteration fails; the regression suite checks that late hardening tau values continue to move rather than freezing
 - the faithful loss path now defaults to linear uncertainty weighting (`uncertainty_power=1.0`) to match the current PyTorch reference more closely
 - nonfinite gradient entries are scrubbed before clipping/update, and raw results now record those events separately as `nonfinite_grad_steps`
+- gate probabilities now use a numerically stable sigmoid in both training and snapping paths, avoiding `exp` overflow in the hardening tail
 
 The summary pipeline also needed one robustness fix: failed runs can emit `hardening_iter = null`, so `scripts/summarize_results.jl` now loads that field as missing and emits `NaN` for group means when no hardening iteration exists instead of crashing during aggregation.
 
@@ -212,7 +213,7 @@ The eventual measurement deliverable is still the family tendency table for:
 
 The current local evidence suggests two concrete follow-ups:
 
-- investigate why `depth3` still ends `0/4` on symbolic recovery even after the broad forward/post-update nonfinite loop is suppressed, and why it still accumulates `nonfinite_grad_steps ≈ 93-95`
+- investigate why `depth3` still ends `0/4` on symbolic recovery even after the broad forward/post-update and nonfinite-gradient loop is suppressed
 - isolate why `depth4 random_hot` still falls into `failure_reason=nonfinite_detected` while the other `depth4` families are numerically clean
 - compare those cases against the PyTorch implementation's hardening dynamics and saturation behavior
 - re-run the full sweep only after the above tentative signal improves enough to justify the compute
@@ -252,4 +253,4 @@ After the next stabilization pass:
 
 The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The new local rerun changes the tentative prioritization: recorded forward/post-update `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there and nonfinite-gradient pressure remains high, while `depth4 random_hot` remains the sharp numerical edge case. The full sweep still matters, but it should follow the next stabilization pass rather than lead it.
+The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there, while `depth4 random_hot` remains the sharp numerical edge case. The full sweep still matters, but it should follow the next stabilization pass rather than lead it.

@@ -16,7 +16,7 @@ softmax/sigmoid 確率を見て、閾値以内に hard snap できない leaf/ga
 """
 function analyze_snap(ps; snap_threshold::Float64=0.01)
     leaf_probs = _softmax_rows(ps.leaf_logits, 1.0)
-    gate_probs = 1.0 ./ (1.0 .+ exp.(-ps.blend_logits))
+    gate_probs = _gate_probs(ps.blend_logits, 1.0)
 
     names = ("1", "x", "y")
     uncertain_leaves = String[]

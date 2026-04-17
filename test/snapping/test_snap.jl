@@ -46,3 +46,19 @@ end
     ]
     @test analyze_snap(snapped; snap_threshold=0.01).n_uncertain == 0
 end
+
+@testset "analyze_snap stays finite for overflow-prone gate logits" begin
+    ps = (
+        leaf_logits=fill(6.0, 4, 3),
+        blend_logits=[
+            0.0 -1000.0
+            -1000.0 1000.0
+            0.5 -0.5
+        ],
+    )
+
+    info = analyze_snap(ps; snap_threshold=0.01)
+
+    @test info.n_uncertain >= 0
+    @test isempty(filter(msg -> occursin("NaN", msg) || occursin("Inf", msg), info.uncertain_gates))
+end

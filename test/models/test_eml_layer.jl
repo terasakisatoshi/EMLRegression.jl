@@ -1,6 +1,7 @@
 using Test
 using Lux
 using StableRNGs
+using Zygote
 using EMLRegression
 
 function saturated_gate_fixture(tree)
@@ -81,4 +82,32 @@ end
     @test regs_default.entropy ≈ regs_linear.entropy atol=1.0e-12
     @test regs_default.binarity ≈ regs_linear.binarity atol=1.0e-12
     @test regs_default.ambiguity ≈ regs_linear.ambiguity atol=1.0e-12
+end
+
+@testset "extreme saturated gates keep finite gradients in hardening tail" begin
+    tree = EMLTree(depth=2, eml_clamp=1.0e6)
+    ps = (
+        leaf_logits=[
+            6.0 -6.0 -6.0;
+            6.0 -6.0 -6.0;
+            6.0 -6.0 -6.0;
+            6.0 -6.0 -6.0
+        ],
+        blend_logits=[
+            0.0 -12.0;
+            0.0 0.0;
+            0.0 0.0
+        ],
+    )
+    xy = (collect(1.0:0.5:2.0), collect(1.0:0.5:2.0))
+    target = ComplexF64.(fill(1.5, length(xy[1])))
+    tau = 0.016604154655958138
+
+    loss(ps_current) = begin
+        pred, _ = EMLRegression.forward_with_aux(tree, xy, ps_current; tau_leaf=tau, tau_gate=tau)
+        sum(abs2, pred .- target) / length(target)
+    end
+
+    grads = only(Zygote.gradient(loss, ps))
+    @test all(isfinite, grads.blend_logits)
 end

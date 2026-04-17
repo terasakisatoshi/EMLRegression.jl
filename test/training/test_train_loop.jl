@@ -73,7 +73,7 @@ end
     @test result.nan_restarts == 0
     @test result.nonfinite_steps == result.summary[:nonfinite_steps]
     @test haskey(result.summary, :nonfinite_grad_steps)
-    @test result.summary[:nonfinite_grad_steps] >= 0
+    @test result.summary[:nonfinite_grad_steps] == 0
     @test result.nan_restarts == result.summary[:nan_restarts]
     @test haskey(result.diagnostics, :phase)
     @test haskey(result.diagnostics, :tau_gate)
