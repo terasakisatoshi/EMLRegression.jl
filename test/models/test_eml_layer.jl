@@ -3,6 +3,19 @@ using Lux
 using StableRNGs
 using EMLRegression
 
+function saturated_gate_fixture(tree)
+    rng = StableRNG(1)
+    ps, st = Lux.setup(rng, tree)
+    fill!(ps.leaf_logits, 1.0e6)
+    fill!(ps.blend_logits, 1.0e6)
+    return ps, st
+end
+
+fixture_inputs() = (
+    ComplexF64[1.0 + 0.0im, 2.0 + 0.0im],
+    ComplexF64[1.5 + 0.0im, 2.5 + 0.0im],
+)
+
 @testset "paper-faithful tree parameter shapes" begin
     tree = EMLTree(depth=3)
     rng = StableRNG(1)
@@ -38,4 +51,12 @@ end
     blended = EMLRegression._complex_blend(child, 1.0, 1.0e6)
     @test blended[1] == 1.0 + 0.0im
     @test blended[2] == 1.0 + 0.0im
+end
+
+@testset "saturated gates still produce bounded forward outputs" begin
+    tree = EMLTree(depth=3, eml_clamp=1.0e6)
+    ps, _ = saturated_gate_fixture(tree)
+    ŷ, _ = EMLRegression.forward_with_regularizers(tree, fixture_inputs(), ps)
+    @test all(isfinite, real.(ŷ))
+    @test all(isfinite, imag.(ŷ))
 end

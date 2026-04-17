@@ -1,5 +1,6 @@
 using Test
 using Lux
+using Optimisers
 using StableRNGs
 using Zygote
 using EMLRegression
@@ -21,6 +22,23 @@ using EMLRegression
     @test haskey(result.metrics, :tau)
     @test result.summary[:hardening_iter] !== nothing
     @test length(result.metrics[:soft_rmse]) > 0
+end
+
+@testset "hardening schedule follows paper temperature path" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=6,
+        hardening_iters=4,
+        tau_search=1.0,
+        tau_hard=0.01,
+        hardening_tau_power=1.0,
+    )
+    taus = EMLRegression.collect_tau_schedule(cfg)
+    @test first(taus) == 1.0
+    @test last(taus) ≈ 0.01 atol=1.0e-12
+    @test all(diff(taus) .<= 0.0)
+    @test taus[7:end] ≈ exp10.(range(0.0, -2.0, length=4))
 end
 
 @testset "training loop records finite losses on paper-aligned target" begin
@@ -130,6 +148,19 @@ end
     @test sqrt(sq_norm) <= 1.0 + 1.0e-12
     @test clipped.leaf_logits[1, 1] < grads.leaf_logits[1, 1]
     @test clipped.blend_logits[1, 1] < grads.blend_logits[1, 1]
+end
+
+@testset "optimizer learning rate adjustment preserves state and updates eta" begin
+    ps = (
+        leaf_logits=ones(2, 3),
+        blend_logits=ones(1, 2),
+    )
+    opt_state = Optimisers.setup(Optimisers.Adam(0.1), ps)
+    before = EMLRegression._optimizer_learning_rates(opt_state)
+    EMLRegression._adjust_optimizer_lr!(opt_state, 0.025)
+    after = EMLRegression._optimizer_learning_rates(opt_state)
+    @test all(≈(0.1), before)
+    @test all(≈(0.025), after)
 end
 
 @testset "paper-budget saturated gates remain differentiable" begin

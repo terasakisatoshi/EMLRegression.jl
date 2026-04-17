@@ -55,7 +55,7 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         end
 
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
-        opt = Optimisers.Adam(cfg.lr * lr_mult)
+        _adjust_optimizer_lr!(opt_state, cfg.lr * lr_mult)
         tau_state = _state_with_tau(st, tau)
 
         # Run the faithful composite loss once before autodiff so nonfinite states
@@ -271,17 +271,54 @@ function _push_diagnostic!(trace::Dict{Symbol,Vector{Any}}, snapshot, limit::Int
     return trace
 end
 
+function _adjust_optimizer_lr!(opt_state, eta::Real)
+    Optimisers.adjust!(opt_state, eta)
+    return opt_state
+end
+
+function _optimizer_learning_rates(opt_state)
+    rates = Float64[]
+    _collect_optimizer_learning_rates!(rates, opt_state)
+    return rates
+end
+
+function _collect_optimizer_learning_rates!(rates::Vector{Float64}, state::Optimisers.Leaf)
+    if hasproperty(state.rule, :eta)
+        push!(rates, Float64(getproperty(state.rule, :eta)))
+    end
+    return rates
+end
+
+_collect_optimizer_learning_rates!(rates::Vector{Float64}, state::NamedTuple) = (foreach(v -> _collect_optimizer_learning_rates!(rates, v), values(state)); rates)
+_collect_optimizer_learning_rates!(rates::Vector{Float64}, state::Tuple) = (foreach(v -> _collect_optimizer_learning_rates!(rates, v), state); rates)
+_collect_optimizer_learning_rates!(rates::Vector{Float64}, _) = rates
+
 function _schedule(cfg::TrainConfig, phase::Symbol, hard_step::Int)
     if phase === :search
         return cfg.tau_search, 0.0, 0.0, 1.0
     end
-    t = hard_step / max(cfg.hardening_iters, 1)
-    t_tau = t ^ cfg.hardening_tau_power
-    tau = cfg.tau_search * (cfg.tau_hard / cfg.tau_search) ^ t_tau
+    hardening_taus = _hardening_tau_schedule(cfg)
+    idx = clamp(hard_step + 1, 1, max(length(hardening_taus), 1))
+    tau = isempty(hardening_taus) ? cfg.tau_hard : hardening_taus[idx]
+    t = cfg.hardening_iters <= 1 ? 1.0 : hard_step / (cfg.hardening_iters - 1)
     lam_ent = t * cfg.lam_ent_hard
     lam_bin = t * cfg.lam_bin_hard
     lr_mult = max(cfg.hardening_lr_floor, (1.0 - t)^2)
     return tau, lam_ent, lam_bin, lr_mult
+end
+
+function _hardening_tau_schedule(cfg::TrainConfig)
+    if cfg.hardening_iters <= 0
+        return Float64[]
+    elseif cfg.hardening_iters == 1
+        return [cfg.tau_hard]
+    end
+    t = range(0.0, 1.0, length=cfg.hardening_iters) .^ cfg.hardening_tau_power
+    return exp10.(log10(cfg.tau_search) .+ t .* (log10(cfg.tau_hard) - log10(cfg.tau_search)))
+end
+
+function collect_tau_schedule(cfg::TrainConfig)
+    return vcat(fill(cfg.tau_search, cfg.search_iters), _hardening_tau_schedule(cfg))
 end
 
 function _finite_residuals(preds, ys)
@@ -383,7 +420,7 @@ function forward_with_regularizers(
     while size(current_level, 2) > 1
         n_pairs = size(current_level, 2) ÷ 2
         raw = @view ps.blend_logits[node_idx:(node_idx + n_pairs - 1), :]
-        gates = 1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
+        gates = clamp_probs.(1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6)))))
         left_children = @view current_level[:, 1:2:size(current_level, 2)]
         right_children = @view current_level[:, 2:2:size(current_level, 2)]
         left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)

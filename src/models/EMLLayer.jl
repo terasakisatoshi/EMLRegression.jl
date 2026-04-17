@@ -245,7 +245,7 @@ function forward_with_aux(tree::EMLTree, xy, ps; tau_leaf::Real=1.0, tau_gate::R
     while size(current_level, 2) > 1
         n_pairs = size(current_level, 2) ÷ 2
         raw = @view ps.blend_logits[node_idx:(node_idx + n_pairs - 1), :]
-        gates = 1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6))))
+        gates = clamp_probs.(1.0 ./ (1.0 .+ exp.(-(raw ./ max(tau_gate, 1.0e-6)))))
         left_children = @view current_level[:, 1:2:size(current_level, 2)]
         right_children = @view current_level[:, 2:2:size(current_level, 2)]
         left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)
@@ -262,6 +262,8 @@ function forward_with_aux(tree::EMLTree, xy, ps; tau_leaf::Real=1.0, tau_gate::R
     aux = (; tau_leaf, tau_gate, leaf_probs, gate_probs, eml_outputs)
     return vec(current_level[:, 1]), aux
 end
+
+clamp_probs(x::Real; lo::Real=1.0e-12, hi::Real=1.0 - 1.0e-12) = clamp(x, lo, hi)
 
 function _to_complex_pair(xy::Tuple)
     length(xy) == 2 || throw(ArgumentError("EMLTree expects (x, y) inputs"))
