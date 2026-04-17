@@ -75,6 +75,7 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "failure_reason" => string(outcome.training.failure_reason),
         "nan_restarts" => get(outcome.training.summary, :nan_restarts, 0),
         "nonfinite_steps" => get(outcome.training.summary, :nonfinite_steps, 0),
+        "nonfinite_grad_steps" => get(outcome.training.summary, :nonfinite_grad_steps, 0),
         "snap_mse" => _json_float(outcome.recovery.snap_mse),
         "snap_rmse" => _json_float(outcome.recovery.snap_rmse),
         "snap_max_real" => _json_float(outcome.recovery.snap_max_real),

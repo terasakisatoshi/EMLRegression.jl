@@ -178,17 +178,28 @@ exact symbolic values へ落とす流れが説明されています。
 さらに、正解木の近傍から始める basin-of-attraction 実験では、
 depth 5 と 6 でも 100% 戻ると述べています。
 
-現実装はこの方向性を検証し始めてはいますが、
+現実装はこの方向性を検証し始めてはいますが、2026-04-17 時点の
+`section-4-3-remaining-work` worktree にある local rerun は
+`depth3` / `depth4` の 1-seed sample と `depth2` の anchor run に留まります。
 
 - seed 数がまだ少ない
 - blind recovery は tuned 条件に依存する
 - depth 5 blind recovery は未達
 - depth 6 は小規模 negative control 段階
 
+その一方で、この small sample rerun からは次の偏りが暫定的に見えています。
+
+- `depth3` は random init 4 family すべてで依然 `0/1` success だが、この rerun では recorded な `nonfinite_steps=0`, `nan_restarts=0` まで改善した一方、`nonfinite_grad_steps` は `93-95` 残っている
+- `depth4` はこの sample では `biased`, `uniform`, `xy_biased` が `nonfinite_steps=0` だが、`nonfinite_grad_steps` は `3-32` 残る
+- ただし `depth4 random_hot` は `failure_reason=nonfinite_detected`, `nonfinite_steps=5000`, `nan_restarts=100` で依然として catastrophic
+
 という状態です。
 
 したがって、現在の結果を論文の成功率と直接比較するのは危険です。
-現状は「構造と実験導線はあるが、統計規模と最終性能は未再現」とみるのが適切です。
+現状は「構造と実験導線はあるが、統計規模と最終性能は未再現」であり、
+ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点、
+さらに `nonfinite_grad_steps` が別立てで残っている点にも注意が必要です。
+次の実装上の焦点候補は `depth3` の symbolic recovery 改善と `depth4 random_hot` の局所対策です。
 
 ## 8. 現実装の strict success 判定は論文本文より厳しい
 
@@ -221,6 +232,7 @@ Section 4.3 と現実装の距離感は、次のように理解するのが実�
 - 論文の parameterization: まだ別物
 - 論文の評価規模: まだ未到達
 - 論文の成功率: まだ未再現
+- 実装修正の次の焦点候補: `depth3` の symbolic recovery 改善、その次に `depth4 random_hot`
 
 つまり、現コードベースは
 「Section 4.3 を Julia で研究し直すための再構成版」

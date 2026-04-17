@@ -57,7 +57,7 @@ end
     @test all(isfinite, result.metrics[:tau])
 end
 
-@testset "depth3 paper-budget run records instability without crashing" begin
+@testset "depth3 paper-budget run no longer stalls in broad nonfinite loops" begin
     cfg = TrainConfig(
         target=:eml_depth3,
         depth=3,
@@ -65,11 +65,15 @@ end
         search_iters=6000,
         hardening_iters=2000,
         seed=137,
+        diagnostics_limit=128,
     )
     result = run_training(cfg; capture_diagnostics=true)
     @test result.failure_reason == EMLRegression.no_failure
-    @test result.nonfinite_steps > 0 || result.nan_restarts > 0
+    @test result.nonfinite_steps < 10
+    @test result.nan_restarts == 0
     @test result.nonfinite_steps == result.summary[:nonfinite_steps]
+    @test haskey(result.summary, :nonfinite_grad_steps)
+    @test result.summary[:nonfinite_grad_steps] >= 0
     @test result.nan_restarts == result.summary[:nan_restarts]
     @test haskey(result.diagnostics, :phase)
     @test haskey(result.diagnostics, :tau_gate)
@@ -78,6 +82,8 @@ end
     @test length(result.diagnostics[:tau_gate]) == length(result.diagnostics[:phase])
     @test all(isfinite, result.diagnostics[:tau_gate])
     @test all(phase -> phase in (:search, :hardening), result.diagnostics[:phase])
+    tail = result.diagnostics[:tau_gate][max(end - 31, 1):end]
+    @test length(unique(round.(Float64.(tail), sigdigits=12))) >= min(8, cld(length(tail), 2))
 end
 
 @testset "training accepts manual expression initialization" begin
@@ -148,6 +154,21 @@ end
     @test sqrt(sq_norm) <= 1.0 + 1.0e-12
     @test clipped.leaf_logits[1, 1] < grads.leaf_logits[1, 1]
     @test clipped.blend_logits[1, 1] < grads.blend_logits[1, 1]
+end
+
+@testset "gradient clipping scrubs nonfinite entries before rescaling" begin
+    grads = (
+        leaf_logits=[NaN 3.0 4.0; 5.0 Inf 6.0],
+        blend_logits=[7.0 -Inf],
+    )
+    @test EMLRegression.any_bad_grad(grads)
+    clipped = EMLRegression._clip_gradients(grads, 1.0)
+    @test all(isfinite, clipped.leaf_logits)
+    @test all(isfinite, clipped.blend_logits)
+    @test !EMLRegression.any_bad_grad(clipped)
+    @test clipped.leaf_logits[1, 1] == 0.0
+    @test clipped.leaf_logits[2, 2] == 0.0
+    @test clipped.blend_logits[1, 2] == 0.0
 end
 
 @testset "optimizer learning rate adjustment preserves state and updates eta" begin

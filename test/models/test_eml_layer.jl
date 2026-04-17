@@ -60,3 +60,25 @@ end
     @test all(isfinite, real.(ŷ))
     @test all(isfinite, imag.(ŷ))
 end
+
+@testset "paper regularizers default to linear uncertainty weighting" begin
+    tree = EMLTree(depth=2, eml_clamp=1.0e6)
+    ps = (
+        leaf_logits=[
+            1.2 0.4 -0.6;
+            -0.2 1.0 0.3;
+            0.7 -0.1 0.2;
+            0.0 0.5 -0.4
+        ],
+        blend_logits=[
+            1.4 -0.6;
+            0.8 0.2;
+            -0.3 1.1
+        ],
+    )
+    _, regs_default = EMLRegression.forward_with_regularizers(tree, fixture_inputs(), ps)
+    _, regs_linear = EMLRegression.forward_with_regularizers(tree, fixture_inputs(), ps; uncertainty_power=1.0)
+    @test regs_default.entropy ≈ regs_linear.entropy atol=1.0e-12
+    @test regs_default.binarity ≈ regs_linear.binarity atol=1.0e-12
+    @test regs_default.ambiguity ≈ regs_linear.ambiguity atol=1.0e-12
+end

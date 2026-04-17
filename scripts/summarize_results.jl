@@ -3,6 +3,9 @@ using CSV
 using DataFrames
 
 _mean(xs) = sum(xs) / length(xs)
+_mean_or_nan(xs) = isempty(xs) ? NaN : _mean(xs)
+_mean_skipmissing(xs) = _mean_or_nan(Float64.(collect(skipmissing(xs))))
+_json_int_or_missing(x) = isnothing(x) ? missing : Int(x)
 
 const PAPER_FAMILIES = (
     "depth2",
@@ -29,12 +32,13 @@ function empty_raw_results()
         success=Bool[],
         n_uncertain=Int[],
         nonfinite_steps=Int[],
+        nonfinite_grad_steps=Int[],
         nan_restarts=Int[],
         snap_mse=Float64[],
         snap_rmse=Float64[],
         snap_max_real=Float64[],
         snap_max_imag=Float64[],
-        hardening_iter=Int[],
+        hardening_iter=Union{Missing,Int}[],
     )
 end
 
@@ -70,12 +74,13 @@ function load_raw_results(raw_dir)
             :success => Bool(get(row, :success, false)),
             :n_uncertain => Int(get(row, :n_uncertain, 0)),
             :nonfinite_steps => Int(get(row, :nonfinite_steps, 0)),
+            :nonfinite_grad_steps => Int(get(row, :nonfinite_grad_steps, 0)),
             :nan_restarts => Int(get(row, :nan_restarts, 0)),
             :snap_mse => Float64(get(row, :snap_mse, Inf)),
             :snap_rmse => Float64(get(row, :snap_rmse, Inf)),
             :snap_max_real => Float64(get(row, :snap_max_real, Inf)),
             :snap_max_imag => Float64(get(row, :snap_max_imag, Inf)),
-            :hardening_iter => Int(get(row, :hardening_iter, 0)),
+            :hardening_iter => _json_int_or_missing(get(row, :hardening_iter, nothing)),
         ))
     end
 
@@ -83,7 +88,7 @@ function load_raw_results(raw_dir)
 end
 
 function summarize_section_4_3(df::DataFrame)
-    section_df = subset(df, :family => ByRow(x -> x in PAPER_FAMILIES))
+    section_df = subset(df, :config_name => ByRow(config_name -> paper_family(config_name) in PAPER_FAMILIES))
     if isempty(section_df)
         return DataFrame(
             job_name=String[],
@@ -93,20 +98,24 @@ function summarize_section_4_3(df::DataFrame)
             symbol_count=Int[],
             stable_symbol_count=Int[],
             nonfinite_steps=Int[],
+            nonfinite_grad_steps=Int[],
             nan_restarts=Int[],
             runs=Int[],
         )
     end
+    section_df = transform(section_df, :config_name => ByRow(paper_family) => :paper_family)
 
     summary = combine(
-        groupby(section_df, [:family, :init_strategy]),
+        groupby(section_df, [:paper_family, :init_strategy]),
         :fit_success => sum => :fit_count,
         :symbol_success => sum => :symbol_count,
         :stable_symbol_success => sum => :stable_symbol_count,
         :nonfinite_steps => sum => :nonfinite_steps,
+        :nonfinite_grad_steps => sum => :nonfinite_grad_steps,
         :nan_restarts => sum => :nan_restarts,
         nrow => :runs,
     )
+    rename!(summary, :paper_family => :family)
     insertcols!(summary, 1, :job_name => summary.family)
     return summary
 end
@@ -130,6 +139,7 @@ function summarize_all_results(raw_dir="results/raw")
             mean_snap_rmse=Float64[],
             mean_snap_max_real=Float64[],
             mean_snap_max_imag=Float64[],
+            mean_nonfinite_grad_steps=Float64[],
             mean_hardening_iter=Float64[],
             init_strategies=String[],
             runs=Int[],
@@ -147,7 +157,8 @@ function summarize_all_results(raw_dir="results/raw")
         :snap_rmse => _mean => :mean_snap_rmse,
         :snap_max_real => _mean => :mean_snap_max_real,
         :snap_max_imag => _mean => :mean_snap_max_imag,
-        :hardening_iter => _mean => :mean_hardening_iter,
+        :nonfinite_grad_steps => _mean => :mean_nonfinite_grad_steps,
+        :hardening_iter => _mean_skipmissing => :mean_hardening_iter,
         :init_strategy => (x -> join(sort!(unique(collect(x))), ",")) => :init_strategies,
         nrow => :runs,
     )

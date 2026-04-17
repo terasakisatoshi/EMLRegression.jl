@@ -1,8 +1,8 @@
 # Section 4.3 Faithful Rewrite Report
 
 Date: 2026-04-17
-Branch: `report-remaining-work`
-Worktree: `.worktrees/report-remaining-work`
+Branch: `section-4-3-remaining-work`
+Worktree: `.worktrees/section-4-3-remaining-work`
 
 ## Summary
 
@@ -10,14 +10,14 @@ Section 4.3 faithful rewrite remains the main implementation direction. The old 
 
 The latest blocker on `main` was a paper-budget training failure, not a modeling mismatch. Full `6000/2000` hardening could hit a Zygote shape error after the gates had already become highly saturated. That blocker is now fixed in this worktree.
 
-Current work is in the measurement/reporting phase. The sweep and summary scripts are now wired to emit a Section 4.3 family table alongside the existing aggregate summary, but this worktree does not yet contain completed raw sweep artifacts to report final counts from.
+Current work is in the measurement/reporting phase. The sweep and summary scripts now emit a Section 4.3 family table alongside the aggregate summary, and this worktree contains a post-stabilization paper-budget sample rerun for `depth3` and `depth4` plus a `depth2` anchor run.
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/run_paper_headless_sweep.jl --jobs depth2,depth3,depth4,depth5_random,depth6_random,depth5_manual_noise12,depth6_manual_noise12
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-At the time of this report update, no local raw JSON sweep artifacts are present in `results/raw`, so completed family counts remain pending. The reporting path is ready to consume them once the sweep finishes.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update nonfinite loop is suppressed in this sample, while `depth3` still accumulates many scrubbed nonfinite-gradient steps and `depth4 random_hot` remains the main catastrophic numerical edge case.
 
 ## What Was Done
 
@@ -32,9 +32,9 @@ At the time of this report update, no local raw JSON sweep artifacts are present
 
 Relevant files:
 
-- [src/models/EMLLayer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/models/EMLLayer.jl:1)
-- [src/EMLRegression.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/EMLRegression.jl:1)
-- [test/models/test_eml_layer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/models/test_eml_layer.jl:1)
+- [src/models/EMLLayer.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/models/EMLLayer.jl:1)
+- [src/EMLRegression.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/EMLRegression.jl:1)
+- [test/models/test_eml_layer.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/test/models/test_eml_layer.jl:1)
 
 ### 2. Paper-Aligned Targets / Training / Recovery
 
@@ -52,16 +52,16 @@ Relevant files:
 
 Relevant files:
 
-- [src/targets/TargetRegistry.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/targets/TargetRegistry.jl:1)
-- [src/training/TrainConfig.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/training/TrainConfig.jl:1)
-- [src/training/TrainLoop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/training/TrainLoop.jl:1)
-- [src/snapping/Snap.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/snapping/Snap.jl:1)
-- [src/eval/Metrics.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/eval/Metrics.jl:1)
-- [src/eval/Recovery.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/src/eval/Recovery.jl:1)
-- [scripts/run_experiment.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_experiment.jl:1)
-- [scripts/run_suite.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_suite.jl:1)
-- [scripts/summarize_results.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/summarize_results.jl:1)
-- [scripts/run_paper_headless_sweep.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/scripts/run_paper_headless_sweep.jl:1)
+- [src/targets/TargetRegistry.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/targets/TargetRegistry.jl:1)
+- [src/training/TrainConfig.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/training/TrainConfig.jl:1)
+- [src/training/TrainLoop.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/training/TrainLoop.jl:1)
+- [src/snapping/Snap.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/snapping/Snap.jl:1)
+- [src/eval/Metrics.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/eval/Metrics.jl:1)
+- [src/eval/Recovery.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/src/eval/Recovery.jl:1)
+- [scripts/run_experiment.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/scripts/run_experiment.jl:1)
+- [scripts/run_suite.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/scripts/run_suite.jl:1)
+- [scripts/summarize_results.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/scripts/summarize_results.jl:1)
+- [scripts/run_paper_headless_sweep.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/scripts/run_paper_headless_sweep.jl:1)
 
 ## Gradient / Hardening Bug Investigation
 
@@ -113,8 +113,8 @@ The problematic paths were:
 
 Regression tests:
 
-- [test/training/test_train_loop.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/training/test_train_loop.jl:1)
-- [test/models/test_eml_layer.jl](/Users/terasaki/work/terasakisatoshi/EMLRegression.jl/.worktrees/report-remaining-work/test/models/test_eml_layer.jl:1)
+- [test/training/test_train_loop.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/test/training/test_train_loop.jl:1)
+- [test/models/test_eml_layer.jl](/Users/atelierarith/work/terasakisatoshi/EMLRegression.jl/.worktrees/section-4-3-remaining-work/test/models/test_eml_layer.jl:1)
 
 Commit:
 
@@ -124,10 +124,12 @@ Commit:
 
 ### Verified
 
-Fresh verification command run successfully:
+Fresh verification commands run successfully:
 
 ```bash
 ~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["training"])'
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["models"])'
+~/.juliaup/bin/julia --project=. -e 'using Pkg; Pkg.test(test_args=["eval"])'
 ```
 
 What that means:
@@ -142,21 +144,32 @@ Additional regression coverage now exists for:
 - exact-one and saturated-gate blend behavior in `_complex_blend`
 - paper-budget saturated gates remaining differentiable
 
-### Partial Full-Sweep Results
+### Post-Stabilization Paper-Budget Sample Rerun
 
-The full sweep is still running. Confirmed partial results at this report snapshot:
+This worktree now has a small local paper-budget rerun:
 
-- `pnas_d2_random-biased`: `8/8` fit, `8/8` symbolic, `4/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
-- `pnas_d2_random-uniform`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
-- `pnas_d2_random-xy_biased`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
-- `pnas_d2_random-random_hot`: `8/8` fit, `8/8` symbolic, `2/8` stable symbolic, `nonfinite_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-biased`: `0/16` fit, `0/16` symbolic, `0/16` stable symbolic, cumulative `nonfinite_steps=1546`, cumulative `nan_restarts=23`
-- `pnas_d3_random-uniform`: `0/4` fit, `0/4` symbolic, `0/4` stable symbolic, cumulative `nonfinite_steps=347`, cumulative `nan_restarts=5`
+- `pnas_d2_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=95`, `nan_restarts=0`
+- `pnas_d3_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
+- `pnas_d3_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
+- `pnas_d3_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=93`, `nan_restarts=0`
+- `pnas_d4_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=32`, `nan_restarts=0`
+- `pnas_d4_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=17`, `nan_restarts=0`
+- `pnas_d4_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=3`, `nan_restarts=0`
+- `pnas_d4_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=5000`, `nonfinite_grad_steps=0`, `nan_restarts=100`, `failure_reason=nonfinite_detected`
 
-This already shows one match and one mismatch versus the external PyTorch reference:
+This sample is too small to replace the paper-scale tendency table, but it is large enough to suggest the next two debugging targets:
 
-- match: `depth2` random discovery is effectively solved
-- mismatch: `depth3` is currently underperforming the PyTorch README expectation of `17/64`
+- `depth3` no longer shows recorded forward/post-update nonfinite or restart pressure across the four random initialization families in this sample, but it is still `0/4` on symbolic recovery and still accumulates `nonfinite_grad_steps ≈ 93-95`.
+- `depth4` is forward-stable for `biased`, `uniform`, and `xy_biased` in this sample, but those runs still record `nonfinite_grad_steps` in the `3-32` range, while `random_hot` remains catastrophic.
+
+Three training-path changes were active during this rerun:
+
+- hardening now advances its temperature step even when an iteration fails; the regression suite checks that late hardening tau values continue to move rather than freezing
+- the faithful loss path now defaults to linear uncertainty weighting (`uncertainty_power=1.0`) to match the current PyTorch reference more closely
+- nonfinite gradient entries are scrubbed before clipping/update, and raw results now record those events separately as `nonfinite_grad_steps`
+
+The summary pipeline also needed one robustness fix: failed runs can emit `hardening_iter = null`, so `scripts/summarize_results.jl` now loads that field as missing and emits `NaN` for group means when no hardening iteration exists instead of crashing during aggregation.
 
 ### Reduced Sweep Check
 
@@ -177,15 +190,15 @@ This confirmed the runner propagates the reduced-sweep overrides correctly, and 
 
 ## Remaining Work
 
-### Priority 1: Finish The Full Sweep
+### Priority 1: Depth3 Recovery Before The Expensive Full Sweep
 
-Let the current full paper-style sweep complete, then summarize it with:
+The local sample rerun no longer points to `depth3` as a broad numerical-instability problem. The next pass should target `depth3` symbolic recovery quality itself, then rerun the expensive full paper-style sweep:
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The main deliverable is the measured tendency table for:
+The eventual measurement deliverable is still the family tendency table for:
 
 - `depth2`
 - `depth3`
@@ -197,22 +210,22 @@ The main deliverable is the measured tendency table for:
 
 ### Priority 2: Numerical Stabilization Alignment
 
-Match the PyTorch implementation more closely in the forward / optimization path:
+The current local evidence suggests two concrete follow-ups:
 
-- investigate why `depth3` is still showing large nonfinite/restart pressure under the paper budget
-- compare hardening dynamics and temperature schedule against the PyTorch implementation
-- inspect whether the current Julia objective is still too brittle once gates saturate
-- re-evaluate clamp and restart thresholds if `depth4+` continue to underperform after the first full measurement
+- investigate why `depth3` still ends `0/4` on symbolic recovery even after the broad forward/post-update nonfinite loop is suppressed, and why it still accumulates `nonfinite_grad_steps ≈ 93-95`
+- isolate why `depth4 random_hot` still falls into `failure_reason=nonfinite_detected` while the other `depth4` families are numerically clean
+- compare those cases against the PyTorch implementation's hardening dynamics and saturation behavior
+- re-run the full sweep only after the above tentative signal improves enough to justify the compute
 
 ### Priority 3: Sweep Measurement
 
-After the current sweep finishes:
+After the next stabilization pass:
 
 1. rebuild `results/summaries/summary.csv`
 2. rebuild `results/summaries/section_4_3_summary.csv`
 3. compare each family against the PyTorch README / Supplementary tendencies
-4. update this report with completed counts instead of partial counts
-5. decide whether the next pass should target `depth3` stability specifically or move directly to `depth4+`
+4. update this report with completed family counts instead of the current small-sample rerun
+5. decide whether the next pass should stay on `depth3` or widen back out to `depth4+`
 
 ## Files Changed So Far
 
@@ -239,4 +252,4 @@ After the current sweep finishes:
 
 The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The next milestone is empirical: finish the full sweep, record the depth-wise recovery tendency, and then focus the next stabilization pass on the still-weak `depth3+` behavior.
+The new local rerun changes the tentative prioritization: recorded forward/post-update `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there and nonfinite-gradient pressure remains high, while `depth4 random_hot` remains the sharp numerical edge case. The full sweep still matters, but it should follow the next stabilization pass rather than lead it.

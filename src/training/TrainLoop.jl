@@ -25,6 +25,7 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         :hardening_iter => nothing,
         :nan_restarts => 0,
         :nonfinite_steps => 0,
+        :nonfinite_grad_steps => 0,
     )
     diagnostics = Dict{Symbol,Vector{Any}}()
 
@@ -55,6 +56,7 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         end
 
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
+        phase === :hardening && (hard_step += 1)
         _adjust_optimizer_lr!(opt_state, cfg.lr * lr_mult)
         tau_state = _state_with_tau(st, tau)
 
@@ -107,25 +109,9 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
             _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
         end
         if any_bad_grad(grads)
-            summary[:nonfinite_steps] += 1
-            nan_streak += 1
-            if should_restart(nan_streak, nan_restarts, cfg)
-                ps = deepcopy(best_soft_state)
-                opt_state = Optimisers.setup(opt, ps)
-                nan_streak = 0
-                nan_restarts += 1
-                hard_success_streak = 0
-                summary[:nan_restarts] = nan_restarts
-            end
-            if capture_diagnostics
-                _push_diagnostic!(
-                    diagnostics,
-                    _training_diagnostics_snapshot(phase, it, tau_state, ps, total),
-                    cfg.diagnostics_limit,
-                )
-            end
-            continue
+            summary[:nonfinite_grad_steps] += 1
         end
+        grads = _sanitize_grads(grads)
         grads = _clip_gradients(grads, cfg.grad_clip_norm)
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
 
@@ -186,7 +172,6 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
             end
         end
 
-        phase === :hardening && (hard_step += 1)
     end
 
     summary[:hardening_iter] = hardening_iter
@@ -216,7 +201,7 @@ function compute_losses(
     lam_inter,
     inter_threshold;
     lam_sparse::Float64=0.0,
-    uncertainty_power::Float64=2.0,
+    uncertainty_power::Float64=1.0,
 )
     data_loss = _data_loss(pred, target)
     entropy, binarity, inter_penalty, sparse, ambiguity = _regularization_stats(
@@ -342,7 +327,7 @@ function _regularization_stats(
     eml_outputs,
     inter_threshold;
     lam_inter::Float64=0.0,
-    uncertainty_power::Float64=2.0,
+    uncertainty_power::Float64=1.0,
 )
     eps = 1.0e-12
 
@@ -384,7 +369,7 @@ function forward_with_regularizers(
     tau_leaf::Float64=1.0,
     tau_gate::Float64=1.0,
     inter_threshold::Float64=50.0,
-    uncertainty_power::Float64=2.0,
+    uncertainty_power::Float64=1.0,
 )
     x, y = _to_complex_pair(xy)
     leaf_probs = _softmax_rows(ps.leaf_logits, tau_leaf)
@@ -484,12 +469,20 @@ function _autodiff_gradient(loss_fn, ps)
 end
 
 function _clip_gradients(grads, max_norm::Real)
+    grads = _sanitize_grads(grads)
     max_norm <= 0 && return grads
     total_norm = sqrt(_grad_sqnorm(grads))
     (!isfinite(total_norm) || total_norm <= max_norm) && return grads
     scale = max_norm / (total_norm + eps(Float64))
     return _scale_grads(grads, scale)
 end
+
+_sanitize_grads(::Nothing) = nothing
+_sanitize_grads(x::Number) = isfinite(x) ? x : zero(x)
+_sanitize_grads(x::AbstractArray) = map(v -> isfinite(v) ? v : zero(v), x)
+_sanitize_grads(xs::Tuple) = map(_sanitize_grads, xs)
+_sanitize_grads(xs::NamedTuple) = map(_sanitize_grads, xs)
+_sanitize_grads(x) = x
 
 _grad_sqnorm(::Nothing) = 0.0
 _grad_sqnorm(x::Number) = abs2(x)
