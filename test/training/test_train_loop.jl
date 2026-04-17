@@ -123,7 +123,7 @@ end
     @test result.failure_reason in (EMLRegression.no_failure, EMLRegression.nonfinite_detected)
 end
 
-@testset "nonfinite search steps trigger restart accounting instead of immediate abort" begin
+@testset "depth4 random_hot search stays finite under restart guard settings" begin
     cfg = TrainConfig(
         target=:eml_depth4,
         depth=4,
@@ -140,8 +140,9 @@ end
     result = run_training(cfg; rng=StableRNG(137))
     @test haskey(result.summary, :nan_restarts)
     @test haskey(result.summary, :nonfinite_steps)
-    @test result.summary[:nan_restarts] > 0
-    @test result.summary[:nonfinite_steps] > 0
+    @test result.failure_reason === EMLRegression.no_failure
+    @test result.summary[:nan_restarts] == 0
+    @test result.summary[:nonfinite_steps] == 0
 end
 
 @testset "gradient clipping rescales oversized nested gradients" begin

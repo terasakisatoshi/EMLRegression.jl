@@ -410,7 +410,7 @@ function forward_with_regularizers(
         right_children = @view current_level[:, 2:2:size(current_level, 2)]
         left_input = _complex_blend(left_children, vec(gates[:, 1]), tree.eml_clamp)
         right_input = _complex_blend(right_children, vec(gates[:, 2]), tree.eml_clamp)
-        next_level = _sanitize_and_clamp_matrix(eml(left_input, right_input), tree.eml_clamp)
+        next_level = _sanitize_and_clamp_matrix(_layer_eml(left_input, right_input), tree.eml_clamp)
         current_level = next_level
         gate_unc = clamp.(1.0 .- abs.(2.0 .* gates .- 1.0), 0.0, 1.0) .^ uncertainty_power
         gate_bin = gates .* (1.0 .- gates)

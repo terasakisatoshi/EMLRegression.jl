@@ -17,7 +17,7 @@ Current work is in the measurement/reporting phase. The sweep and summary script
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, while symbolic recovery is still absent there and `depth4 random_hot` remains the main catastrophic numerical edge case.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, symbolic recovery is still absent there, and `depth4 random_hot` has moved from a catastrophic overflow case to a one-seed success that still needs wider confirmation.
 
 ## What Was Done
 
@@ -156,12 +156,12 @@ This worktree now has a small local paper-budget rerun:
 - `pnas_d4_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `pnas_d4_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `pnas_d4_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=5000`, `nonfinite_grad_steps=0`, `nan_restarts=100`, `failure_reason=nonfinite_detected`
+- `pnas_d4_random-random_hot`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`, `failure_reason=no_failure`
 
 This sample is too small to replace the paper-scale tendency table, but it is large enough to suggest the next two debugging targets:
 
 - `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, but it is still `0/4` on symbolic recovery.
-- `depth4` is forward-stable for `biased`, `uniform`, and `xy_biased` in this sample with `nonfinite_grad_steps=0`, while `random_hot` remains catastrophic.
+- `depth4` is forward-stable across all four random initialization families in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` now reaches `fit_success=true` and `symbol_success=true` for the sampled seed, but still ends with high ambiguity and `stable_symbol_success=false`.
 
 Four training-path changes were active during this rerun:
 
@@ -211,10 +211,10 @@ The eventual measurement deliverable is still the family tendency table for:
 
 ### Priority 2: Numerical Stabilization Alignment
 
-The current local evidence suggests two concrete follow-ups:
+The current local evidence suggests three concrete follow-ups:
 
 - investigate why `depth3` still ends `0/4` on symbolic recovery even after the broad forward/post-update and nonfinite-gradient loop is suppressed
-- isolate why `depth4 random_hot` still falls into `failure_reason=nonfinite_detected` while the other `depth4` families are numerically clean
+- confirm whether the new `depth4 random_hot` one-seed success survives a wider seed sample and whether its ambiguity can be reduced enough to reach `stable_symbol_success`
 - compare those cases against the PyTorch implementation's hardening dynamics and saturation behavior
 - re-run the full sweep only after the above tentative signal improves enough to justify the compute
 
@@ -226,7 +226,7 @@ After the next stabilization pass:
 2. rebuild `results/summaries/section_4_3_summary.csv`
 3. compare each family against the PyTorch README / Supplementary tendencies
 4. update this report with completed family counts instead of the current small-sample rerun
-5. decide whether the next pass should stay on `depth3` or widen back out to `depth4+`
+5. decide whether the next pass should stay on `depth3` or widen back out to `depth4 random_hot` multi-seed confirmation
 
 ## Files Changed So Far
 
@@ -253,4 +253,4 @@ After the next stabilization pass:
 
 The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there, while `depth4 random_hot` remains the sharp numerical edge case. The full sweep still matters, but it should follow the next stabilization pass rather than lead it.
+The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there, while `depth4 random_hot` is no longer a catastrophic overflow case and now needs broader confirmation rather than emergency stabilization. The full sweep still matters, but it should follow the next recovery-quality pass rather than lead it.
