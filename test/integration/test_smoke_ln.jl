@@ -34,21 +34,27 @@ end
         mkpath(raw_dir)
 
         write(joinpath(raw_dir, "run1.json"), """
-        {"config_name":"depth2_sweep-a","depth":2,"target":"eml_depth2","tier":"must_pass","seed":1,"init_strategy":"biased","fit_success":true,"symbol_success":false,"stable_symbol_success":false,"success":true,"n_uncertain":1,"snap_mse":1e-8,"snap_rmse":1e-4,"snap_max_real":1e-3,"snap_max_imag":0.0,"hardening_iter":10}
+        {"config_name":"pnas_d2_random-biased","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":1,"init_strategy":"biased","fit_success":true,"symbol_success":false,"stable_symbol_success":false,"success":true,"n_uncertain":1,"snap_mse":1e-8,"snap_rmse":1e-4,"snap_max_real":1e-3,"snap_max_imag":0.0,"hardening_iter":10}
         """)
         write(joinpath(raw_dir, "run2.json"), """
-        {"config_name":"depth2_sweep-a","depth":2,"target":"eml_depth2","tier":"must_pass","seed":2,"init_strategy":"random_hot","fit_success":false,"symbol_success":false,"stable_symbol_success":false,"success":false,"n_uncertain":3,"snap_mse":1e-2,"snap_rmse":1e-1,"snap_max_real":1e-1,"snap_max_imag":0.0,"hardening_iter":12}
+        {"config_name":"pnas_d2_random-random_hot","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":2,"init_strategy":"random_hot","fit_success":false,"symbol_success":false,"stable_symbol_success":false,"success":false,"n_uncertain":3,"snap_mse":1e-2,"snap_rmse":1e-1,"snap_max_real":1e-1,"snap_max_imag":0.0,"hardening_iter":12}
         """)
 
         run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(summary_script)`; dir=dir))
 
         summary = CSV.read(joinpath(dir, "results", "summaries", "summary.csv"), DataFrame)
+        section = CSV.read(joinpath(dir, "results", "summaries", "section_4_3_summary.csv"), DataFrame)
         @test "fit_success_rate" in names(summary)
         @test "symbol_success_rate" in names(summary)
         @test "stable_symbol_success_rate" in names(summary)
         @test "mean_n_uncertain" in names(summary)
-        @test summary[1, :fit_success_rate] ≈ 0.5
-        @test summary[1, :init_strategies] == "biased,random_hot"
+        @test nrow(summary) == 2
+        @test Set(summary.config_name) == Set(["pnas_d2_random-biased", "pnas_d2_random-random_hot"])
+        @test Set(summary.init_strategies) == Set(["biased", "random_hot"])
+        @test Set(section.job_name) == Set(["depth2"])
+        @test Set(section.init_strategy) == Set(["biased", "random_hot"])
+        @test sum(section.fit_count) == 1
+        @test sum(section.runs) == 2
     end
 end
 
@@ -96,6 +102,7 @@ end
         config_path = joinpath(dir, "depth2_single.toml")
         write(config_path, """
         name = "depth2_single"
+        family = "depth2"
         depth = 2
         search_iters = 5
         hardening_iters = 2
@@ -113,6 +120,8 @@ end
         @test haskey(row, :fit_success)
         @test haskey(row, :symbol_success)
         @test haskey(row, :stable_symbol_success)
+        @test haskey(row, :family)
+        @test String(row[:family]) == "depth2"
         @test haskey(row, :failure_reason)
         @test haskey(row, :nan_restarts)
         @test haskey(row, :nonfinite_steps)

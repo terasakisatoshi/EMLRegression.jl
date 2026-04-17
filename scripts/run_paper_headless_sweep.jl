@@ -51,6 +51,7 @@ function concrete_specs(job_key, parsed)
     for spec in PAPER_JOB_SPECS[job_key], strategy in spec.init_families
         config_name = length(spec.init_families) == 1 ? spec.name : "$(spec.name)-$(strategy)"
         push!(specs, merge(spec, (
+            family=job_key,
             config_name=config_name,
             init_strategy=String(strategy),
             seed0=_override_int(parsed, "--seed0", spec.seed0),
@@ -72,6 +73,7 @@ end
 function write_temp_config(path, spec)
     open(path, "w") do io
         println(io, "name = \"$(spec.config_name)\"")
+        println(io, "family = \"$(spec.family)\"")
         println(io, "depth = $(spec.depth)")
         println(io, "init_strategy = \"$(spec.init_strategy)\"")
         println(io, "search_iters = $(spec.search_iters)")

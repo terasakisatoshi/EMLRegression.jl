@@ -10,16 +10,14 @@ Section 4.3 faithful rewrite remains the main implementation direction. The old 
 
 The latest blocker on `main` was a paper-budget training failure, not a modeling mismatch. Full `6000/2000` hardening could hit a Zygote shape error after the gates had already become highly saturated. That blocker is now fixed in this worktree.
 
-Current work is in the measurement phase. A full paper-style sweep is running with:
+Current work is in the measurement/reporting phase. The sweep and summary scripts are now wired to emit a Section 4.3 family table alongside the existing aggregate summary, but this worktree does not yet contain completed raw sweep artifacts to report final counts from.
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/run_paper_headless_sweep.jl --jobs depth2,depth3,depth4,depth5_random,depth6_random,depth5_manual_noise12,depth6_manual_noise12
+~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-At the time of this report update, the sweep is still in progress. The strongest confirmed tendencies so far are:
-
-- `depth2`: `32/32` fit and symbolic successes across the four random-start families
-- `depth3`: strong instability remains under the current Julia dynamics, with `biased 0/16` completed so far and heavy nonfinite/restart activity
+At the time of this report update, no local raw JSON sweep artifacts are present in `results/raw`, so completed family counts remain pending. The reporting path is ready to consume them once the sweep finishes.
 
 ## What Was Done
 
@@ -50,6 +48,7 @@ Relevant files:
   - `stable_symbol_success`
 - Updated experiment and summary scripts to the new schema.
 - Added `scripts/run_paper_headless_sweep.jl` as the Julia analogue of the PyTorch headless sweep runner.
+- Added a family-level `Section 4.3` summary output alongside `results/summaries/summary.csv`.
 
 Relevant files:
 
@@ -210,9 +209,10 @@ Match the PyTorch implementation more closely in the forward / optimization path
 After the current sweep finishes:
 
 1. rebuild `results/summaries/summary.csv`
-2. compare each family against the PyTorch README / Supplementary tendencies
-3. update this report with completed counts instead of partial counts
-4. decide whether the next pass should target `depth3` stability specifically or move directly to `depth4+`
+2. rebuild `results/summaries/section_4_3_summary.csv`
+3. compare each family against the PyTorch README / Supplementary tendencies
+4. update this report with completed counts instead of partial counts
+5. decide whether the next pass should target `depth3` stability specifically or move directly to `depth4+`
 
 ## Files Changed So Far
 

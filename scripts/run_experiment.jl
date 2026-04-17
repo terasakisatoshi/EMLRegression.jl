@@ -23,6 +23,7 @@ function load_cfg(path, target_name, parsed=Dict{String,String}())
     target = get_target(Symbol(target_name))
     target.depth == cfg["depth"] || error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
     config_name = get(parsed, "--config-name", cfg["name"])
+    family = get(parsed, "--family", get(cfg, "family", config_name))
 
     return TrainConfig(
         depth=target.depth,
@@ -53,13 +54,14 @@ function load_cfg(path, target_name, parsed=Dict{String,String}())
         gen_lo=_override_float(parsed, "--gen-lo", get(cfg, "gen_lo", 0.5)),
         gen_hi=_override_float(parsed, "--gen-hi", get(cfg, "gen_hi", 5.0)),
         generalization_points=_override_int(parsed, "--generalization-points", get(cfg, "generalization_points", 4000)),
-    ), Dict("name" => config_name)
+    ), Dict("name" => config_name, "family" => family)
 end
 
 function write_raw_result(config_meta, cfg, seed, outcome)
     mkpath("results/raw")
     result = Dict(
         "config_name" => config_meta["name"],
+        "family" => config_meta["family"],
         "depth" => cfg.depth,
         "target" => String(cfg.target),
         "tier" => String(get_target(cfg.target).tier),
