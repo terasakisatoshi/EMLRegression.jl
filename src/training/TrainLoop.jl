@@ -9,6 +9,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
     ps, st = Lux.setup(rng, tree)
     _apply_initialization!(rng, ps, cfg)
+    training_uncertainty_power = 1.0
 
     opt = Optimisers.Adam(cfg.lr)
     opt_state = Optimisers.setup(opt, ps)
@@ -22,19 +23,29 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
     )
     summary = Dict{Symbol,Any}(
         :hardening_iter => nothing,
+        :hardening_reason => nothing,
+        :best_hard_mse => Inf,
+        :final_hard_mse => Inf,
         :nan_restarts => 0,
         :nonfinite_steps => 0,
+        :uncertainty_power => training_uncertainty_power,
     )
 
     best_soft_loss = Inf
     best_soft_state = deepcopy(ps)
+    best_hard_loss = Inf
+    best_hard_state = nothing
     phase = :search
     hardening_iter = nothing
+    hardening_reason = nothing
     hard_step = 0
     hard_success_streak = 0
+    hard_trigger_streak = 0
+    plateau_counter = 0
     nan_streak = 0
     nan_restarts = 0
     failure_reason = no_failure
+    pending_hardening_reason = nothing
 
     total_iters = cfg.search_iters + cfg.hardening_iters
     for it in 1:total_iters
@@ -43,13 +54,28 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
             break
         end
 
-        if phase === :search && it > cfg.search_iters
-            phase = :hardening
-            hardening_iter = it
-            summary[:hardening_iter] = it
-            hard_step = 0
-            ps = deepcopy(best_soft_state)
-            opt_state = Optimisers.setup(opt, ps)
+        if phase === :search
+            start_hardening_reason = nothing
+            if pending_hardening_reason !== nothing
+                start_hardening_reason = pending_hardening_reason
+            elseif it > cfg.search_iters
+                start_hardening_reason = :budget
+            elseif plateau_counter >= cfg.patience && best_soft_loss < cfg.patience_threshold
+                start_hardening_reason = :plateau
+            end
+
+            if start_hardening_reason !== nothing
+                phase = :hardening
+                hardening_iter = it
+                hardening_reason = start_hardening_reason
+                summary[:hardening_iter] = it
+                summary[:hardening_reason] = start_hardening_reason
+                hard_step = 0
+                ps = deepcopy(best_soft_state)
+                opt_state = Optimisers.setup(opt, ps)
+                pending_hardening_reason = nothing
+                hard_trigger_streak = 0
+            end
         end
 
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
@@ -64,6 +90,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
             tau_leaf=tau,
             tau_gate=tau,
             inter_threshold=cfg.inter_threshold,
+            uncertainty_power=training_uncertainty_power,
         )
         data_loss = _data_loss(pred, t_train)
         total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
@@ -73,12 +100,14 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
+            plateau_counter += 1
             if nan_streak >= cfg.nan_restart_patience
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
                 nan_streak = 0
                 nan_restarts += 1
                 hard_success_streak = 0
+                hard_trigger_streak = 0
                 summary[:nan_restarts] = nan_restarts
             end
             continue
@@ -92,6 +121,7 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
                 tau_leaf=tau,
                 tau_gate=tau,
                 inter_threshold=cfg.inter_threshold,
+                uncertainty_power=training_uncertainty_power,
             )
             data_loss = _data_loss(pred, t_train)
             _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
@@ -99,61 +129,110 @@ function run_training(cfg::TrainConfig; rng=StableRNG(1))
         grads = _clip_gradients(grads, cfg.grad_clip_norm)
         opt_state, ps = Optimisers.update(opt_state, ps, grads)
 
-        pred, regs = forward_with_regularizers(
+        post_pred, post_regs = forward_with_regularizers(
             tree,
             (x_train, y_train),
             ps;
             tau_leaf=tau,
             tau_gate=tau,
             inter_threshold=cfg.inter_threshold,
+            uncertainty_power=training_uncertainty_power,
         )
-        data_loss = _data_loss(pred, t_train)
-        total = _combine_losses(data_loss, regs.entropy, regs.binarity, regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
-        entropy = regs.entropy
-        binarity = regs.binarity
-
-        if !(isfinite(total) && isfinite(data_loss))
+        post_data_loss = _data_loss(post_pred, t_train)
+        post_total = _combine_losses(post_data_loss, post_regs.entropy, post_regs.binarity, post_regs.inter_penalty, lam_ent, lam_bin, cfg.lam_inter)
+        if !(isfinite(post_total) && isfinite(post_data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
+            plateau_counter += 1
             if nan_streak >= cfg.nan_restart_patience
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
                 nan_streak = 0
                 nan_restarts += 1
                 hard_success_streak = 0
+                hard_trigger_streak = 0
                 summary[:nan_restarts] = nan_restarts
             end
             continue
         end
 
         nan_streak = 0
-        soft_loss = float(real(data_loss))
+        soft_loss = float(real(post_data_loss))
+        entropy = post_regs.entropy
+        binarity = post_regs.binarity
         push!(metrics[:soft_rmse], sqrt(max(soft_loss, 0.0)))
         push!(metrics[:tau], tau)
         push!(metrics[:entropy], float(real(entropy)))
         push!(metrics[:binarity], float(real(binarity)))
 
-        if soft_loss < best_soft_loss
-            best_soft_loss = soft_loss
+        best_soft_loss, plateau_counter, is_new_best = _update_best_soft_loss(
+            best_soft_loss,
+            soft_loss,
+            plateau_counter,
+            cfg.plateau_rtol,
+        )
+        if is_new_best
             best_soft_state = deepcopy(ps)
         end
 
         if it % max(cfg.eval_every, 1) == 0 || (phase === :hardening && tau <= cfg.tail_eval_tau && it % max(cfg.tail_eval_every, 1) == 0)
             hard_mse, _, _ = evaluate(tree, ps, st, x_train, y_train, t_train; tau=cfg.tau_hard)
             push!(metrics[:hard_rmse], sqrt(max(hard_mse, 0.0)))
+            if isfinite(hard_mse) && hard_mse < best_hard_loss
+                best_hard_loss = hard_mse
+                best_hard_state = deepcopy(ps)
+            end
             if phase === :hardening && isfinite(hard_mse) && hard_mse < cfg.success_thr
                 hard_success_streak += 1
                 hard_success_streak >= cfg.early_stop_count && break
             else
                 hard_success_streak = 0
             end
+            if phase === :search
+                if isfinite(hard_mse) && hard_mse < cfg.hard_trigger_mse
+                    hard_trigger_streak += 1
+                else
+                    hard_trigger_streak = 0
+                end
+                if hard_trigger_streak >= cfg.hard_trigger_count
+                    pending_hardening_reason = :hard_trigger
+                    ps = deepcopy(best_soft_state)
+                    opt_state = Optimisers.setup(opt, ps)
+                    hard_trigger_streak = 0
+                end
+            end
+
         end
 
         phase === :hardening && (hard_step += 1)
     end
 
     summary[:hardening_iter] = hardening_iter
+    summary[:hardening_reason] = hardening_reason
+    summary[:best_hard_mse] = best_hard_loss
+
+    if isfinite(best_hard_loss) && best_hard_state !== nothing
+        ps = deepcopy(best_hard_state)
+    elseif hardening_iter !== nothing
+        ps = deepcopy(ps)
+    else
+        ps = deepcopy(best_soft_state)
+    end
+
+    final_hard_mse, _, _ = evaluate(tree, ps, st, x_train, y_train, t_train; tau=cfg.tau_hard)
+    summary[:final_hard_mse] = final_hard_mse
     return TrainingResult(cfg, metrics, failure_reason, ps, st, summary)
+end
+
+function _update_best_soft_loss(best_soft_loss, soft_loss, plateau_counter::Int, plateau_rtol::Real)
+    if soft_loss < best_soft_loss
+        if !isfinite(best_soft_loss)
+            return soft_loss, 0, true
+        end
+        rel_imp = (best_soft_loss - soft_loss) / max(best_soft_loss, 1.0e-15)
+        return soft_loss, rel_imp > plateau_rtol ? 0 : plateau_counter + 1, true
+    end
+    return best_soft_loss, plateau_counter + 1, false
 end
 
 function _apply_initialization!(rng, ps, cfg::TrainConfig)

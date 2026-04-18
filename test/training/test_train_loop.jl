@@ -39,6 +39,54 @@ end
     @test all(isfinite, result.metrics[:tau])
 end
 
+@testset "training loop uses the PyTorch uncertainty exponent" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=1,
+        hardening_iters=0,
+        lr=0.0,
+        eval_every=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+
+    result = run_training(cfg; rng=StableRNG(1))
+
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+    rng = StableRNG(1)
+    ps, _ = Lux.setup(rng, tree)
+    EMLRegression._apply_initialization!(rng, ps, cfg)
+
+    _, regs_power_1 = EMLRegression.forward_with_regularizers(
+        tree,
+        (x_train, y_train),
+        ps;
+        tau_leaf=cfg.tau_search,
+        tau_gate=cfg.tau_search,
+        inter_threshold=cfg.inter_threshold,
+        uncertainty_power=1.0,
+    )
+    _, regs_power_2 = EMLRegression.forward_with_regularizers(
+        tree,
+        (x_train, y_train),
+        ps;
+        tau_leaf=cfg.tau_search,
+        tau_gate=cfg.tau_search,
+        inter_threshold=cfg.inter_threshold,
+        uncertainty_power=2.0,
+    )
+
+    @test result.summary[:uncertainty_power] == 1.0
+    @test isapprox(result.metrics[:entropy][1], regs_power_1.entropy; rtol=1e-12, atol=1e-12)
+    @test isapprox(result.metrics[:binarity][1], regs_power_1.binarity; rtol=1e-12, atol=1e-12)
+    @test !isapprox(result.metrics[:entropy][1], regs_power_2.entropy; rtol=1e-12, atol=1e-12) ||
+          !isapprox(result.metrics[:binarity][1], regs_power_2.binarity; rtol=1e-12, atol=1e-12)
+end
+
 @testset "training accepts manual expression initialization" begin
     cfg = TrainConfig(
         target=:eml_depth2,
@@ -57,6 +105,122 @@ end
     result = run_training(cfg; rng=StableRNG(1))
     @test !isempty(result.metrics[:soft_rmse])
     @test result.failure_reason == EMLRegression.no_failure
+end
+
+@testset "run_training restores best hard checkpoint instead of last params" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=4,
+        hardening_iters=4,
+        eval_every=1,
+        tail_eval_every=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+    _, st = Lux.setup(StableRNG(1), tree)
+
+    result = run_training(cfg; rng=StableRNG(1))
+    hard_mse, _, _ = EMLRegression.evaluate(tree, result.params, st, x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test haskey(result.summary, :best_hard_mse)
+    @test haskey(result.summary, :final_hard_mse)
+    @test hard_mse == get(result.summary, :final_hard_mse, Inf)
+    @test get(result.summary, :final_hard_mse, Inf) == get(result.summary, :best_hard_mse, -Inf)
+end
+
+@testset "run_training can enter hardening before search budget on plateau" begin
+    # These settings keep the search loss nearly flat so the plateau detector should trip early.
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=40,
+        hardening_iters=4,
+        eval_every=1,
+        patience=2,
+        patience_threshold=Inf,
+        plateau_rtol=1.0,
+        data_lo=1.0,
+        data_hi=1.1,
+        data_step=0.1,
+    )
+
+    result = run_training(cfg; rng=StableRNG(1))
+
+    @test result.summary[:hardening_iter] !== nothing
+    @test result.summary[:hardening_iter] < cfg.search_iters
+    @test get(result.summary, :hardening_reason, nothing) == :plateau
+end
+
+@testset "run_training can enter hardening from repeated exact hard evals" begin
+    # This manual init starts at an exact hard solution so the repeated hard-eval trigger should fire quickly.
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        init_strategy=:manual,
+        init_expr="EML[1, EML[x, y]]",
+        init_noise=0.0,
+        search_iters=20,
+        hardening_iters=4,
+        eval_every=1,
+        hard_trigger_mse=0.03,
+        hard_trigger_count=2,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+
+    result = run_training(cfg; rng=StableRNG(1))
+
+    @test result.summary[:hardening_iter] !== nothing
+    @test result.summary[:hardening_iter] <= 3
+    @test get(result.summary, :hardening_reason, nothing) == :hard_trigger
+end
+
+@testset "run_training returns hardened params even when no hard eval runs" begin
+    cfg_with_hardening = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=1,
+        hardening_iters=1,
+        eval_every=100,
+        tail_eval_every=100,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+    cfg_search_only = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=1,
+        hardening_iters=0,
+        eval_every=100,
+        tail_eval_every=100,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+
+    hardening_result = run_training(cfg_with_hardening; rng=StableRNG(1))
+    search_only_result = run_training(cfg_search_only; rng=StableRNG(1))
+
+    @test hardening_result.summary[:hardening_iter] == 2
+    @test hardening_result.summary[:best_hard_mse] == Inf
+    @test isempty(hardening_result.metrics[:hard_rmse])
+    @test hardening_result.params != search_only_result.params
+end
+
+@testset "first finite best resets plateau counter before hardening" begin
+    best_soft_loss, plateau_counter, is_new_best = EMLRegression._update_best_soft_loss(Inf, 0.25, 7, 1.0e-3)
+
+    @test best_soft_loss == 0.25
+    @test plateau_counter == 0
+    @test is_new_best
 end
 
 @testset "depth4 random_hot training returns without tuple-gradient exception" begin
