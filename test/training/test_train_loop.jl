@@ -24,6 +24,41 @@ using EMLRegression
     @test length(result.metrics[:soft_rmse]) > 0
 end
 
+@testset "hard trigger can start hardening before search budget" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=20,
+        hardening_iters=4,
+        eval_every=1,
+        hard_trigger_mse=Inf,
+        hard_trigger_count=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test result.summary[:hardening_iter] == 2
+end
+
+@testset "plateau gate can start hardening before search budget" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=20,
+        hardening_iters=4,
+        eval_every=1,
+        patience=1,
+        patience_threshold=Inf,
+        plateau_rtol=Inf,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test result.summary[:hardening_iter] == 2
+end
+
 @testset "hardening schedule follows paper temperature path" begin
     cfg = TrainConfig(
         target=:eml_depth2,
@@ -36,9 +71,23 @@ end
     )
     taus = EMLRegression.collect_tau_schedule(cfg)
     @test first(taus) == 1.0
-    @test last(taus) ≈ 0.01 atol=1.0e-12
+    @test last(taus) ≈ 10.0^(-1.5) atol=1.0e-12
     @test all(diff(taus) .<= 0.0)
-    @test taus[7:end] ≈ exp10.(range(0.0, -2.0, length=4))
+    @test taus[7:end] ≈ exp10.([0.0, -0.5, -1.0, -1.5])
+end
+
+@testset "single-step hardening keeps search temperature for the lone update" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=3,
+        hardening_iters=1,
+        tau_search=2.5,
+        tau_hard=0.01,
+        hardening_tau_power=2.0,
+    )
+    taus = EMLRegression.collect_tau_schedule(cfg)
+    @test taus == [2.5, 2.5, 2.5, 2.5]
 end
 
 @testset "training loop records finite losses on paper-aligned target" begin
@@ -84,6 +133,13 @@ end
     @test all(phase -> phase in (:search, :hardening), result.diagnostics[:phase])
     tail = result.diagnostics[:tau_gate][max(end - 31, 1):end]
     @test length(unique(round.(Float64.(tail), sigdigits=12))) >= min(8, cld(length(tail), 2))
+
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+    final_hard_mse, _, _ = EMLRegression.evaluate(tree, result.params, result.state, x_train, y_train, t_train; tau=cfg.tau_hard)
+    final_hard_rmse = sqrt(max(final_hard_mse, 0.0))
+    @test final_hard_rmse <= minimum(result.metrics[:hard_rmse]) + 1.0e-12
 end
 
 @testset "training accepts manual expression initialization" begin
@@ -143,6 +199,29 @@ end
     @test result.failure_reason === EMLRegression.no_failure
     @test result.summary[:nan_restarts] == 0
     @test result.summary[:nonfinite_steps] == 0
+end
+
+@testset "training restores the best evaluated hard state before returning" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        init_strategy=:biased,
+        seed=1,
+        search_iters=40,
+        hardening_iters=10,
+        eval_every=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+        lr=0.1,
+    )
+    result = run_training(cfg; rng=StableRNG(cfg.seed))
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+    final_hard_mse, _, _ = EMLRegression.evaluate(tree, result.params, result.state, x_train, y_train, t_train; tau=cfg.tau_hard)
+    final_hard_rmse = sqrt(max(final_hard_mse, 0.0))
+    @test final_hard_rmse <= minimum(result.metrics[:hard_rmse]) + 1.0e-12
 end
 
 @testset "gradient clipping rescales oversized nested gradients" begin

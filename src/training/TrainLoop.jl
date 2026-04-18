@@ -31,10 +31,14 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
 
     best_soft_loss = Inf
     best_soft_state = deepcopy(ps)
+    best_hard_loss = Inf
+    best_hard_state = nothing
     phase = :search
     hardening_iter = nothing
     hard_step = 0
     hard_success_streak = 0
+    hard_trigger_streak = 0
+    plateau_counter = 0
     nan_streak = 0
     nan_restarts = 0
     failure_reason = no_failure
@@ -46,13 +50,17 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
             break
         end
 
-        if phase === :search && it > cfg.search_iters
+        if phase === :search && (
+            it > cfg.search_iters ||
+            (plateau_counter >= cfg.patience && best_soft_loss < cfg.patience_threshold)
+        )
             phase = :hardening
             hardening_iter = it
             summary[:hardening_iter] = it
             hard_step = 0
             ps = deepcopy(best_soft_state)
             opt_state = Optimisers.setup(opt, ps)
+            hard_trigger_streak = 0
         end
 
         tau, lam_ent, lam_bin, lr_mult = _schedule(cfg, phase, hard_step)
@@ -85,6 +93,7 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
+            plateau_counter += 1
             if should_restart(nan_streak, nan_restarts, cfg)
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
@@ -138,6 +147,7 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         if !(isfinite(total) && isfinite(data_loss))
             summary[:nonfinite_steps] += 1
             nan_streak += 1
+            plateau_counter += 1
             if should_restart(nan_streak, nan_restarts, cfg)
                 ps = deepcopy(best_soft_state)
                 opt_state = Optimisers.setup(opt, ps)
@@ -157,24 +167,53 @@ function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=f
         push!(metrics[:binarity], float(real(binarity)))
 
         if soft_loss < best_soft_loss
+            rel_imp = (best_soft_loss - soft_loss) / max(best_soft_loss, 1.0e-15)
             best_soft_loss = soft_loss
             best_soft_state = deepcopy(ps)
+            plateau_counter = rel_imp > cfg.plateau_rtol ? 0 : (plateau_counter + 1)
+        else
+            plateau_counter += 1
         end
 
         if it % max(cfg.eval_every, 1) == 0 || (phase === :hardening && tau <= cfg.tail_eval_tau && it % max(cfg.tail_eval_every, 1) == 0)
             hard_mse, _, _ = evaluate(tree, ps, st, x_train, y_train, t_train; tau=cfg.tau_hard)
             push!(metrics[:hard_rmse], sqrt(max(hard_mse, 0.0)))
+            if isfinite(hard_mse) && hard_mse < best_hard_loss
+                best_hard_loss = hard_mse
+                best_hard_state = deepcopy(ps)
+            end
             if phase === :hardening && isfinite(hard_mse) && hard_mse < cfg.success_thr
                 hard_success_streak += 1
                 hard_success_streak >= cfg.early_stop_count && break
             else
                 hard_success_streak = 0
             end
+
+            if phase === :search && isfinite(hard_mse) && hard_mse < cfg.hard_trigger_mse
+                hard_trigger_streak += 1
+            elseif phase === :search
+                hard_trigger_streak = 0
+            end
+
+            if phase === :search && hard_trigger_streak >= cfg.hard_trigger_count
+                phase = :hardening
+                hardening_iter = it + 1
+                summary[:hardening_iter] = hardening_iter
+                hard_step = 0
+                ps = deepcopy(best_soft_state)
+                opt_state = Optimisers.setup(opt, ps)
+                hard_trigger_streak = 0
+            end
         end
 
     end
 
     summary[:hardening_iter] = hardening_iter
+    if !isnothing(best_hard_state)
+        ps = best_hard_state
+    else
+        ps = best_soft_state
+    end
     return TrainingResult(cfg, metrics, failure_reason, ps, st, summary, summary[:nonfinite_steps], nan_restarts, diagnostics)
 end
 
@@ -285,7 +324,7 @@ function _schedule(cfg::TrainConfig, phase::Symbol, hard_step::Int)
     hardening_taus = _hardening_tau_schedule(cfg)
     idx = clamp(hard_step + 1, 1, max(length(hardening_taus), 1))
     tau = isempty(hardening_taus) ? cfg.tau_hard : hardening_taus[idx]
-    t = cfg.hardening_iters <= 1 ? 1.0 : hard_step / (cfg.hardening_iters - 1)
+    t = cfg.hardening_iters <= 0 ? 1.0 : hard_step / max(cfg.hardening_iters, 1)
     lam_ent = t * cfg.lam_ent_hard
     lam_bin = t * cfg.lam_bin_hard
     lr_mult = max(cfg.hardening_lr_floor, (1.0 - t)^2)
@@ -296,9 +335,9 @@ function _hardening_tau_schedule(cfg::TrainConfig)
     if cfg.hardening_iters <= 0
         return Float64[]
     elseif cfg.hardening_iters == 1
-        return [cfg.tau_hard]
+        return [cfg.tau_search]
     end
-    t = range(0.0, 1.0, length=cfg.hardening_iters) .^ cfg.hardening_tau_power
+    t = ((0:(cfg.hardening_iters - 1)) ./ cfg.hardening_iters) .^ cfg.hardening_tau_power
     return exp10.(log10(cfg.tau_search) .+ t .* (log10(cfg.tau_hard) - log10(cfg.tau_search)))
 end
 
