@@ -236,6 +236,11 @@ function _snap_metrics_better(candidate_metrics, best_metrics; mse_tol::Float64=
     return false
 end
 
+function _default_snap_max_steps(ps; snap_threshold::Float64=0.01, min_steps::Int=8, max_steps::Int=32)
+    info = analyze_snap(ps; snap_threshold=snap_threshold)
+    return clamp(info.n_uncertain + min_steps, min_steps, max_steps)
+end
+
 function _refine_snap_projection(
     tree::EMLTree,
     ps,
@@ -246,9 +251,10 @@ function _refine_snap_projection(
     tau::Float64=0.01,
     snap_threshold::Float64=0.01,
     k::Float64=24.0,
-    max_steps::Int=8,
+    max_steps::Int=0,
     beam_width::Int=64,
 )
+    max_steps = max_steps > 0 ? max_steps : _default_snap_max_steps(ps; snap_threshold=snap_threshold)
     best_params = _copy_params(ps)
     best_metrics = _projected_snap_metrics(
         tree,

@@ -452,3 +452,113 @@ end
     @test refined.improved
     @test refined.snap_info.n_uncertain <= 5
 end
+
+@testset "snap refinement uses enough steps for depth4-style ambiguity tails" begin
+    cfg = TrainConfig(
+        target=:eml_depth4,
+        depth=4,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            -0.512485 6.64292 -3.41389;
+            4.49966 -4.77304 -2.11683;
+            5.2688 -5.31997 -2.9113;
+            -0.432724 8.31214 -3.15435;
+            5.28644 -5.56305 -0.42882;
+            -0.503572 8.35143 -3.40652;
+            -0.754014 9.27262 -2.45755;
+            -1.95989 -8.14263 5.91611;
+            4.17932 -5.69207 2.90461;
+            -0.768972 5.7368 -8.10949;
+            -3.82957 9.41661 -7.31033;
+            -1.62481 -4.46154 9.74047;
+            -0.325801 -2.2604 8.14683;
+            5.79554 -7.27372 -2.37155;
+            -2.95213 -6.47571 5.39465;
+            -3.66313 8.39775 -3.82926;
+        ],
+        blend_logits=[
+            -1.31074 4.22002;
+            5.50001 4.52605;
+            4.98679 2.45627;
+            -4.23223 5.44572;
+            1.69584 0.922219;
+            -6.99418 -8.09909;
+            -1.66309 6.74744;
+            6.48962 5.99381;
+            0.729457 5.10046;
+            2.1059 2.12909;
+            0.0188237 -0.983565;
+            2.52353 6.02657;
+            3.67198 3.73838;
+            -1.38522 -1.25672;
+            0.978311 -1.62561e-5;
+        ],
+    )
+
+    @test analyze_snap(ps; snap_threshold=cfg.snap_threshold).n_uncertain >= 14
+
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+
+    @test refined.snap_mse < 1.0e-20
+    @test refined.snap_info.n_uncertain <= 2
+end
+
+@testset "snap refinement widens step budget for high-ambiguity depth4 fixtures" begin
+    ps = (
+        leaf_logits=[
+            -0.232933 1.41924 0.709155;
+            2.78798 -0.137289 -0.717885;
+            -0.955346 -2.39698 4.11686;
+            5.65093 -1.32113 0.669707;
+            1.35761 1.55326 4.46477;
+            -0.612947 5.45111 -3.54724;
+            6.429 -2.43043 -3.23842;
+            -5.59415 9.01897 -0.935535;
+            4.05003 0.237906 -1.1404;
+            -0.671642 6.10979 -6.3139;
+            -3.20158 9.13125 1.43073;
+            -0.261542 -3.45158 9.72861;
+            -3.16728 0.67682 10.4655;
+            5.80527 -3.94578 -2.63892;
+            5.15895 -5.9142 -3.30861;
+            -2.84948 -1.3956 11.9517;
+        ],
+        blend_logits=[
+            1.7947 2.50644;
+            3.32213 -3.47787;
+            2.991 0.325559;
+            7.31052 -8.47645;
+            4.04208 -1.94489;
+            -3.86552 -3.56516;
+            5.28534 6.201;
+            5.86424 -6.69248;
+            0.445503 -6.28349;
+            0.452591 9.0285;
+            2.08225 -2.50228;
+            7.17528 -5.1814;
+            4.95944 -2.75242;
+            -1.03382 7.51979;
+            1.25486 -4.09018;
+        ],
+    )
+
+    @test analyze_snap(ps; snap_threshold=0.01).n_uncertain >= 17
+    @test EMLRegression._default_snap_max_steps(ps; snap_threshold=0.01) == 30
+end
