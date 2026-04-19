@@ -11,15 +11,22 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
 
     tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale)
-    snap_info = analyze_snap(training.params; snap_threshold=cfg.snap_threshold)
-    snapped = hard_project(training.params)
-    snap_mse, snap_max_real, snap_max_imag = evaluate(tree, snapped, training.state, x_train, y_train, t_train; tau=cfg.tau_hard)
+    refined = _refine_snap_projection(
+        tree,
+        training.params,
+        training.state,
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
 
     verdict = recovery_verdict(
-        snap_mse=snap_mse,
-        snap_max_real=snap_max_real,
-        snap_max_imag=snap_max_imag,
-        n_uncertain=snap_info.n_uncertain,
+        snap_mse=refined.snap_mse,
+        snap_max_real=refined.snap_max_real,
+        snap_max_imag=refined.snap_max_imag,
+        n_uncertain=refined.snap_info.n_uncertain,
         fit_success_thr=cfg.fit_success_thr,
         success_thr=cfg.success_thr,
         max_uncertain_success=cfg.max_uncertain_success,
@@ -29,7 +36,7 @@ function run_experiment(cfg::TrainConfig; rng=StableRNG(1))
     return (
         training=training,
         recovery=verdict,
-        snap=snap_info,
-        snapped_params=snapped,
+        snap=refined.snap_info,
+        snapped_params=refined.snapped_params,
     )
 end

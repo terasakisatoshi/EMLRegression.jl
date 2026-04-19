@@ -56,7 +56,7 @@ end
         data_step=0.1,
     )
     result = run_training(cfg; rng=StableRNG(1))
-    @test result.summary[:hardening_iter] == 2
+    @test result.summary[:hardening_iter] == 3
 end
 
 @testset "hardening schedule follows paper temperature path" begin
@@ -88,6 +88,28 @@ end
     )
     taus = EMLRegression.collect_tau_schedule(cfg)
     @test taus == [2.5, 2.5, 2.5, 2.5]
+end
+
+@testset "training summary records hardening diagnostics from parity path" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        search_iters=20,
+        hardening_iters=4,
+        eval_every=1,
+        hard_trigger_mse=Inf,
+        hard_trigger_count=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    @test result.summary[:hardening_iter] == 2
+    @test result.summary[:hardening_reason] == :hard_trigger
+    @test isfinite(result.summary[:best_hard_mse])
+    @test isfinite(result.summary[:final_hard_mse])
+    @test result.summary[:uncertainty_power] == 1.0
+    @test result.summary[:final_hard_mse] <= result.summary[:best_hard_mse] + 1.0e-12
 end
 
 @testset "training loop records finite losses on paper-aligned target" begin
@@ -222,6 +244,30 @@ end
     final_hard_mse, _, _ = EMLRegression.evaluate(tree, result.params, result.state, x_train, y_train, t_train; tau=cfg.tau_hard)
     final_hard_rmse = sqrt(max(final_hard_mse, 0.0))
     @test final_hard_rmse <= minimum(result.metrics[:hard_rmse]) + 1.0e-12
+end
+
+@testset "lbfgs polish is wired and does not worsen tau-hard loss" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        init_strategy=:biased,
+        search_iters=40,
+        hardening_iters=10,
+        eval_every=1,
+        lbfgs_steps=8,
+        lbfgs_lr=0.6,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+    result = run_training(cfg; rng=StableRNG(1))
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, init_strategy=cfg.init_strategy, init_scale=cfg.init_scale, eml_clamp=cfg.eml_clamp)
+
+    mse_after, _, _ = EMLRegression.evaluate(tree, result.params, result.state, x_train, y_train, t_train; tau=cfg.tau_hard)
+    @test isfinite(mse_after)
+    @test mse_after <= result.summary[:best_hard_mse] + 1.0e-12
 end
 
 @testset "gradient clipping rescales oversized nested gradients" begin

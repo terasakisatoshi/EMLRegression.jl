@@ -211,3 +211,95 @@ end
     @test !verdict.stable_symbol_success
     @test verdict.n_uncertain == 2
 end
+
+@testset "snap refinement can flip an ambiguous gate to recover the right tree" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=1.6,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            24.0 -24.0 -24.0;
+            24.0 -24.0 -24.0;
+            -24.0 -24.0 24.0;
+            -24.0 24.0 -24.0;
+        ],
+        blend_logits=[
+            24.0 24.0;
+            -24.0 -24.0;
+            24.0 0.1;
+        ],
+    )
+
+    snap_before = analyze_snap(ps; snap_threshold=cfg.snap_threshold)
+    snapped_before = hard_project(ps)
+    mse_before, _, _ = EMLRegression.evaluate(tree, snapped_before, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    mse_after, _, _ = EMLRegression.evaluate(tree, refined.snapped_params, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test snap_before.n_uncertain == 1
+    @test refined.snap_info.n_uncertain == 0
+    @test mse_after < mse_before
+    @test mse_after < 1.0e-20
+end
+
+@testset "snap refinement leaves already certain projections unchanged" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=1.6,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            24.0 -24.0 -24.0;
+            24.0 -24.0 -24.0;
+            -24.0 -24.0 24.0;
+            -24.0 24.0 -24.0;
+        ],
+        blend_logits=[
+            24.0 24.0;
+            -24.0 -24.0;
+            24.0 -24.0;
+        ],
+    )
+
+    mse_before, _, _ = EMLRegression.evaluate(tree, hard_project(ps), NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    mse_after, _, _ = EMLRegression.evaluate(tree, refined.snapped_params, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test refined.snap_info.n_uncertain == 0
+    @test !refined.improved
+    @test mse_after == mse_before
+end
