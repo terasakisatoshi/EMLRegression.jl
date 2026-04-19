@@ -195,13 +195,14 @@ depth 5 と 6 でも 100% 戻ると述べています。
 - `depth3` は random init 4 family × `4` seeds で `16/16` fit, `16/16` symbolic, `16/16` stable symbolic まで改善し、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `depth4` は random init 4 family × `4` seeds で `14/16` fit, `14/16` symbolic, `14/16` stable symbolic。`biased`, `uniform`, `xy_biased` は `4/4` stable だが、`random_hot` は `2/4` stable に留まる
 - `depth5_manual_noise12` は `4/4` stable symbolic
-- `depth6_manual_noise12` も local rerun では `4/4` stable symbolic。ただしこれは extern README の `0/4` stable symbolic と一致せず、current Julia recovery path が extern より強い可能性が高い
+- `depth6_manual_noise12` は current Julia の post-recovery metric では `4/4` stable symbolic だが、新しく export した extern-style pre-recovery metric では `0/4` stable symbolic, `mean_pre_recovery_n_uncertain = 2.5` で、README の `0/4` stable symbolic と整合する
 - したがって、現在の immediate gap は `depth3` ではなく `depth4 random_hot` の wider-seed tendency と untouched `depth5_random` / `depth6_random` families へ移っている
 
 という状態です。
 
 したがって、現在の結果を論文の成功率と直接比較するのは危険です。
 現状は「構造と実験導線はあるが、統計規模と stable-success 水準は未再現」であり、
+特に stable-success は post-recovery Julia metric と extern-style pre-recovery metric を分けて読む必要があります。
 ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点には注意が必要です。
 次の実装上の焦点候補は、まず `depth4 random_hot` を wider seed で確認し、その後に untouched `depth5_random` / `depth6_random` を埋めることです。
 

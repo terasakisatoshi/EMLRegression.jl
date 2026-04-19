@@ -21,8 +21,12 @@ using EMLRegression
 
     @test haskey(outcome, :training)
     @test haskey(outcome, :recovery)
+    @test haskey(outcome, :pre_recovery)
     @test haskey(outcome, :snap)
+    @test haskey(outcome, :pre_snap)
     @test outcome.recovery.n_uncertain == outcome.snap.n_uncertain
+    @test outcome.pre_recovery.n_uncertain == outcome.pre_snap.n_uncertain
+    @test outcome.pre_recovery.n_uncertain >= outcome.recovery.n_uncertain
     @test isfinite(outcome.recovery.snap_mse) || isnan(outcome.recovery.snap_mse)
 end
 
@@ -34,10 +38,10 @@ end
         mkpath(raw_dir)
 
         write(joinpath(raw_dir, "run1.json"), """
-        {"config_name":"pnas_d2_random-biased","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":1,"init_strategy":"biased","fit_success":true,"symbol_success":false,"stable_symbol_success":false,"success":true,"n_uncertain":1,"snap_mse":1e-8,"snap_rmse":1e-4,"snap_max_real":1e-3,"snap_max_imag":0.0,"hardening_iter":10}
+        {"config_name":"pnas_d2_random-biased","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":1,"init_strategy":"biased","fit_success":true,"symbol_success":false,"stable_symbol_success":false,"extern_style_stable_symbol_success":false,"pre_recovery_n_uncertain":2,"success":true,"n_uncertain":1,"snap_mse":1e-8,"snap_rmse":1e-4,"snap_max_real":1e-3,"snap_max_imag":0.0,"hardening_iter":10}
         """)
         write(joinpath(raw_dir, "run2.json"), """
-        {"config_name":"pnas_d2_random-random_hot","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":2,"init_strategy":"random_hot","fit_success":false,"symbol_success":false,"stable_symbol_success":false,"success":false,"n_uncertain":3,"snap_mse":1e-2,"snap_rmse":1e-1,"snap_max_real":1e-1,"snap_max_imag":0.0,"hardening_iter":12}
+        {"config_name":"pnas_d2_random-random_hot","family":"depth2","depth":2,"target":"eml_depth2","tier":"must_pass","seed":2,"init_strategy":"random_hot","fit_success":false,"symbol_success":false,"stable_symbol_success":false,"extern_style_stable_symbol_success":false,"pre_recovery_n_uncertain":4,"success":false,"n_uncertain":3,"snap_mse":1e-2,"snap_rmse":1e-1,"snap_max_real":1e-1,"snap_max_imag":0.0,"hardening_iter":12}
         """)
 
         run(Cmd(`$(Base.julia_cmd()) --project=$(repo_root) $(summary_script)`; dir=dir))
@@ -47,7 +51,9 @@ end
         @test "fit_success_rate" in names(summary)
         @test "symbol_success_rate" in names(summary)
         @test "stable_symbol_success_rate" in names(summary)
+        @test "extern_style_stable_symbol_success_rate" in names(summary)
         @test "mean_n_uncertain" in names(summary)
+        @test "mean_pre_recovery_n_uncertain" in names(summary)
         @test nrow(summary) == 2
         @test Set(summary.config_name) == Set(["pnas_d2_random-biased", "pnas_d2_random-random_hot"])
         @test Set(summary.init_strategies) == Set(["biased", "random_hot"])
@@ -120,6 +126,8 @@ end
         @test haskey(row, :fit_success)
         @test haskey(row, :symbol_success)
         @test haskey(row, :stable_symbol_success)
+        @test haskey(row, :extern_style_stable_symbol_success)
+        @test haskey(row, :pre_recovery_n_uncertain)
         @test haskey(row, :family)
         @test String(row[:family]) == "depth2"
         @test haskey(row, :failure_reason)
@@ -144,5 +152,6 @@ end
         @test String(row[:target]) == "eml_depth2"
         @test haskey(row, :fit_success)
         @test haskey(row, :stable_symbol_success)
+        @test haskey(row, :extern_style_stable_symbol_success)
     end
 end

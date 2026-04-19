@@ -5,6 +5,7 @@ using DataFrames
 _mean(xs) = sum(xs) / length(xs)
 _mean_or_nan(xs) = isempty(xs) ? NaN : _mean(xs)
 _mean_skipmissing(xs) = _mean_or_nan(Float64.(collect(skipmissing(xs))))
+_mean_bool_skipmissing(xs) = _mean_or_nan(Float64.(Int.(collect(skipmissing(xs)))))
 _json_int_or_missing(x) = isnothing(x) ? missing : Int(x)
 
 const PAPER_FAMILIES = (
@@ -29,7 +30,9 @@ function empty_raw_results()
         fit_success=Bool[],
         symbol_success=Bool[],
         stable_symbol_success=Bool[],
+        extern_style_stable_symbol_success=Union{Missing,Bool}[],
         success=Bool[],
+        pre_recovery_n_uncertain=Union{Missing,Int}[],
         n_uncertain=Int[],
         nonfinite_steps=Int[],
         nonfinite_grad_steps=Int[],
@@ -71,7 +74,9 @@ function load_raw_results(raw_dir)
             :fit_success => Bool(get(row, :fit_success, false)),
             :symbol_success => Bool(get(row, :symbol_success, false)),
             :stable_symbol_success => Bool(get(row, :stable_symbol_success, false)),
+            :extern_style_stable_symbol_success => get(row, :extern_style_stable_symbol_success, missing),
             :success => Bool(get(row, :success, false)),
+            :pre_recovery_n_uncertain => haskey(row, :pre_recovery_n_uncertain) ? Int(row[:pre_recovery_n_uncertain]) : missing,
             :n_uncertain => Int(get(row, :n_uncertain, 0)),
             :nonfinite_steps => Int(get(row, :nonfinite_steps, 0)),
             :nonfinite_grad_steps => Int(get(row, :nonfinite_grad_steps, 0)),
@@ -133,7 +138,9 @@ function summarize_all_results(raw_dir="results/raw")
             fit_success_rate=Float64[],
             symbol_success_rate=Float64[],
             stable_symbol_success_rate=Float64[],
+            extern_style_stable_symbol_success_rate=Float64[],
             success_rate=Float64[],
+            mean_pre_recovery_n_uncertain=Float64[],
             mean_n_uncertain=Float64[],
             mean_snap_mse=Float64[],
             mean_snap_rmse=Float64[],
@@ -151,7 +158,9 @@ function summarize_all_results(raw_dir="results/raw")
         :fit_success => (x -> _mean(Float64.(x))) => :fit_success_rate,
         :symbol_success => (x -> _mean(Float64.(x))) => :symbol_success_rate,
         :stable_symbol_success => (x -> _mean(Float64.(x))) => :stable_symbol_success_rate,
+        :extern_style_stable_symbol_success => _mean_bool_skipmissing => :extern_style_stable_symbol_success_rate,
         :success => (x -> _mean(Float64.(x))) => :success_rate,
+        :pre_recovery_n_uncertain => _mean_skipmissing => :mean_pre_recovery_n_uncertain,
         :n_uncertain => _mean => :mean_n_uncertain,
         :snap_mse => _mean => :mean_snap_mse,
         :snap_rmse => _mean => :mean_snap_rmse,

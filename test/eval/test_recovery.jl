@@ -1,6 +1,7 @@
 using Test
 using EMLRegression
 using JSON3
+using StableRNGs
 
 include(joinpath(@__DIR__, "..", "..", "scripts", "summarize_results.jl"))
 
@@ -212,6 +213,27 @@ end
     @test verdict.n_uncertain == 2
 end
 
+@testset "run_experiment returns extern-style pre-recovery metrics" begin
+    cfg = TrainConfig(
+        depth=2,
+        target=:eml_depth2,
+        search_iters=10,
+        hardening_iters=4,
+        eval_every=2,
+        tail_eval_every=1,
+        data_lo=1.0,
+        data_hi=1.2,
+        data_step=0.1,
+    )
+
+    outcome = run_experiment(cfg; rng=StableRNG(1))
+
+    @test haskey(outcome, :pre_recovery)
+    @test haskey(outcome, :pre_snap)
+    @test outcome.pre_recovery.n_uncertain == outcome.pre_snap.n_uncertain
+    @test outcome.pre_recovery.n_uncertain >= outcome.recovery.n_uncertain
+end
+
 @testset "snap refinement can flip an ambiguous gate to recover the right tree" begin
     cfg = TrainConfig(
         target=:eml_depth2,
@@ -258,6 +280,70 @@ end
     @test refined.snap_info.n_uncertain == 0
     @test mse_after < mse_before
     @test mse_after < 1.0e-20
+end
+
+@testset "extern-style pre-recovery verdict can differ from refined recovery verdict" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=1.6,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            24.0 -24.0 -24.0;
+            24.0 -24.0 -24.0;
+            -24.0 -24.0 24.0;
+            -24.0 24.0 -24.0;
+        ],
+        blend_logits=[
+            24.0 24.0;
+            -24.0 -24.0;
+            24.0 0.1;
+        ],
+    )
+
+    pre_snap = analyze_snap(ps; snap_threshold=cfg.snap_threshold)
+    pre_snapped = hard_project(ps)
+    pre_mse, pre_max_real, pre_max_imag = EMLRegression.evaluate(tree, pre_snapped, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+    pre_verdict = recovery_verdict(
+        snap_mse=pre_mse,
+        snap_max_real=pre_max_real,
+        snap_max_imag=pre_max_imag,
+        n_uncertain=pre_snap.n_uncertain,
+        fit_success_thr=cfg.fit_success_thr,
+        success_thr=cfg.success_thr,
+        max_uncertain_success=cfg.max_uncertain_success,
+    )
+
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    post_verdict = recovery_verdict(
+        snap_mse=refined.snap_mse,
+        snap_max_real=refined.snap_max_real,
+        snap_max_imag=refined.snap_max_imag,
+        n_uncertain=refined.snap_info.n_uncertain,
+        fit_success_thr=cfg.fit_success_thr,
+        success_thr=cfg.success_thr,
+        max_uncertain_success=cfg.max_uncertain_success,
+    )
+
+    @test !pre_verdict.stable_symbol_success
+    @test post_verdict.stable_symbol_success
+    @test pre_verdict.n_uncertain > post_verdict.n_uncertain
 end
 
 @testset "snap refinement leaves already certain projections unchanged" begin
