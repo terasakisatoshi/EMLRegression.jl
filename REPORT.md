@@ -10,14 +10,14 @@ Section 4.3 faithful rewrite remains the main implementation direction. The old 
 
 The latest blocker on `main` was a paper-budget training failure, not a modeling mismatch. Full `6000/2000` hardening could hit a Zygote shape error after the gates had already become highly saturated. That blocker is now fixed in this worktree.
 
-Current work is in the measurement/reporting phase. The sweep and summary scripts now emit a Section 4.3 family table alongside the aggregate summary, and this worktree contains a post-stabilization paper-budget sample rerun for `depth3` and `depth4` plus a `depth2` anchor run.
+Current work is in the measurement/reporting phase. The sweep and summary scripts now emit a Section 4.3 family table alongside the aggregate summary, and this worktree contains a post-stabilization paper-budget rerun for a `depth3` / `depth4` wider seed slice, plus manual-initialization reruns for `depth5_manual_noise12` and `depth6_manual_noise12`, and a `depth2` anchor run.
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/run_paper_headless_sweep.jl --jobs depth2,depth3,depth4,depth5_random,depth6_random,depth5_manual_noise12,depth6_manual_noise12
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, and all sampled `depth3`/`depth4` random-init families now reach `fit_success=true`, `symbol_success=true`, and `stable_symbol_success=true`. The remaining gap has shifted away from one-seed recovery quality and toward wider seed confirmation plus the untouched `depth5+` families.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a stronger tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in the current `4`-seed slice, `depth3` is `16/16` stable-symbolic in that slice, `depth4` is `14/16` stable-symbolic with failures concentrated in `random_hot`, and the manual `depth5_manual_noise12` / `depth6_manual_noise12` local reruns are both `4/4` stable-symbolic. The remaining gap has shifted away from one-seed recovery quality and toward wider random-start confirmation plus the untouched `depth5_random` / `depth6_random` families.
 
 ## What Was Done
 
@@ -144,24 +144,22 @@ Additional regression coverage now exists for:
 - exact-one and saturated-gate blend behavior in `_complex_blend`
 - paper-budget saturated gates remaining differentiable
 
-### Post-Stabilization Paper-Budget Sample Rerun
+### Post-Stabilization Paper-Budget Local Reruns
 
-This worktree now has a small local paper-budget rerun:
+This worktree now has a wider local paper-budget rerun for `depth3` / `depth4` random starts plus manual-init reruns for `depth5` / `depth6`:
 
 - `pnas_d2_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-biased`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-uniform`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-xy_biased`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-random_hot`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-biased`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-uniform`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-xy_biased`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-random_hot`: `1/1` fit, `1/1` symbolic, `1/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`, `failure_reason=no_failure`
+- `depth3` random-start slice (`seed0=137`, `seeds=4`): `16/16` fit, `16/16` symbolic, `16/16` stable symbolic across `biased`, `uniform`, `xy_biased`, and `random_hot`, with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`
+- `depth4` random-start slice (`seed0=137`, `seeds=4`): `14/16` fit, `14/16` symbolic, `14/16` stable symbolic, with `biased/uniform/xy_biased = 4/4` stable and `random_hot = 2/4` stable; all runs still report `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`
+- `pnas_d5_manual_noise12`: `4/4` fit, `4/4` symbolic, `4/4` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d6_manual_noise12`: `4/4` fit, `4/4` symbolic, `4/4` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 
-This sample is too small to replace the paper-scale tendency table, but it is large enough to change the near-term debugging targets:
+This local rerun is still too small to replace the paper-scale tendency table, but it is large enough to change the near-term debugging targets:
 
-- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, and it is now `4/4` on `fit_success`, `symbol_success`, and `stable_symbol_success`.
-- `depth4` is also `4/4` on `fit_success`, `symbol_success`, and `stable_symbol_success` in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` is no longer a special overflow case.
+- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the current `4`-seed slice, and every sampled run is `fit_success=true`, `symbol_success=true`, and `stable_symbol_success=true`.
+- `depth4` is also finite across the current `4`-seed slice with the same zero-nonfinite profile, but `random_hot` still drops to `2/4` stable-symbolic runs while the other three init families are `4/4`.
+- `depth5_manual_noise12` matches the extern README tendency at `4/4` stable symbolic.
+- `depth6_manual_noise12` does **not** match the extern README stable count: the local rerun is `4/4` stable symbolic whereas the PyTorch README reports `0/4` stable symbolic. The most likely reason is that the current Julia recovery pass is stronger than the extern `analyze_snap(tree)`-before-`hard_project_inplace(tree)` metric, so these stable counts are not apples-to-apples.
 
 Four training-path changes were active during this rerun:
 
@@ -196,9 +194,9 @@ This confirmed the runner propagates the reduced-sweep overrides correctly, and 
 
 ## Remaining Work
 
-### Priority 1: Wider Confirmation Before The Expensive Full Sweep
+### Priority 1: Continue Widening Random-Start Confirmation
 
-The local sample rerun no longer points to `depth3` as a broad numerical-instability problem, a blind symbolic-recovery failure, or a one-seed stable-recovery failure. The next pass should confirm that the sampled `depth3` / `depth4` wins survive a wider seed slice, and only then rerun the expensive full paper-style sweep:
+The local rerun no longer points to `depth3` as a broad numerical-instability problem, a blind symbolic-recovery failure, or even a `4`-seed stable-recovery problem. The next pass should widen `depth4 random_hot` first, then move out to the untouched `depth5_random` / `depth6_random` jobs, and only then rerun the expensive full paper-style sweep:
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
@@ -218,9 +216,9 @@ The eventual measurement deliverable is still the family tendency table for:
 
 The current local evidence suggests three concrete follow-ups:
 
-- confirm whether the new `depth3` / `depth4` one-seed stable-symbolic wins survive a wider seed sample, especially for `random_hot`
-- move back out to the untouched `depth5_random`, `depth6_random`, `depth5_manual_noise12`, and `depth6_manual_noise12` families once the wider `depth3` / `depth4` slice is in place
-- compare those wider-seed outcomes against the PyTorch implementation's published tendencies before paying for the full sweep
+- widen `depth4 random_hot` beyond the current `2/4` stable-symbolic slice to see whether the local tendency settles near the extern README's `6/16`
+- move out to the untouched `depth5_random` and `depth6_random` families once the random-start `depth4` picture is less noisy
+- treat `depth6_manual_noise12` stable-symbolic counts carefully in comparisons, because the current Julia recovery cleanup is stronger than the extern reporting path
 
 ### Priority 3: Sweep Measurement
 
@@ -230,7 +228,7 @@ After the next stabilization pass:
 2. rebuild `results/summaries/section_4_3_summary.csv`
 3. compare each family against the PyTorch README / Supplementary tendencies
 4. update this report with completed family counts instead of the current small-sample rerun
-5. decide whether the next pass should stay on wider `depth3` / `depth4` confirmation or widen back out to the untouched `depth5+` jobs
+5. decide whether the next pass should spend more budget on `depth4 random_hot` confirmation or widen directly into `depth5_random` / `depth6_random`
 
 ## Files Changed So Far
 
@@ -257,4 +255,4 @@ After the next stabilization pass:
 
 The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, and stable symbolic recovery is now present across sampled `depth3` and `depth4` random-init families. The remaining gap is broader seed confirmation plus the untouched `depth5+` jobs. The full sweep still matters, but it should follow those confirmations rather than lead them.
+The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in the current slice, `depth3` is now stable across all sampled runs, and `depth4` only still looks noisy inside the `random_hot` family. The remaining gap is broader random-start confirmation plus the untouched `depth5_random` / `depth6_random` jobs. The full sweep still matters, but it should follow those confirmations rather than lead them.

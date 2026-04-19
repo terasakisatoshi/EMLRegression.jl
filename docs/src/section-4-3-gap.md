@@ -178,27 +178,32 @@ exact symbolic values へ落とす流れが説明されています。
 さらに、正解木の近傍から始める basin-of-attraction 実験では、
 depth 5 と 6 でも 100% 戻ると述べています。
 
-現実装はこの方向性を検証し始めてはいますが、2026-04-17 時点の
-`section-4-3-remaining-work` worktree にある local rerun は
-`depth3` / `depth4` の 1-seed sample と `depth2` の anchor run に留まります。
+現実装はこの方向性を検証し始めてはいますが、2026-04-19 時点の
+`section-4-3-remaining-work` worktree にある local rerun も
+まだ full paper sweep ではなく、
+`depth3` / `depth4` の `4`-seed random-start slice、
+`depth5_manual_noise12` / `depth6_manual_noise12` の `4`-seed manual rerun、
+そして `depth2` の anchor run に留まります。
 
 - seed 数がまだ少ない
 - blind recovery は tuned 条件に依存する
 - depth 5 blind recovery は未達
 - depth 6 は小規模 negative control 段階
 
-その一方で、この small sample rerun からは次の偏りが暫定的に見えています。
+その一方で、この local rerun からは次の偏りが暫定的に見えています。
 
-- `depth3` は random init 4 family すべてで `1/1` fit, `1/1` symbolic, `1/1` stable symbolic まで改善し、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `depth4` も random init 4 family すべてで `1/1` fit, `1/1` symbolic, `1/1` stable symbolic まで改善し、`nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- したがって、この small sample rerun では `depth3` / `depth4` の immediate gap は ambiguity ではなく、wider seed confirmation と untouched `depth5+` families へ移った
+- `depth3` は random init 4 family × `4` seeds で `16/16` fit, `16/16` symbolic, `16/16` stable symbolic まで改善し、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `depth4` は random init 4 family × `4` seeds で `14/16` fit, `14/16` symbolic, `14/16` stable symbolic。`biased`, `uniform`, `xy_biased` は `4/4` stable だが、`random_hot` は `2/4` stable に留まる
+- `depth5_manual_noise12` は `4/4` stable symbolic
+- `depth6_manual_noise12` も local rerun では `4/4` stable symbolic。ただしこれは extern README の `0/4` stable symbolic と一致せず、current Julia recovery path が extern より強い可能性が高い
+- したがって、現在の immediate gap は `depth3` ではなく `depth4 random_hot` の wider-seed tendency と untouched `depth5_random` / `depth6_random` families へ移っている
 
 という状態です。
 
 したがって、現在の結果を論文の成功率と直接比較するのは危険です。
 現状は「構造と実験導線はあるが、統計規模と stable-success 水準は未再現」であり、
 ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点には注意が必要です。
-次の実装上の焦点候補は、`depth3` / `depth4` の wider seed 確認と、その後に untouched `depth5_random`, `depth6_random`, `depth5_manual_noise12`, `depth6_manual_noise12` を埋めることです。
+次の実装上の焦点候補は、まず `depth4 random_hot` を wider seed で確認し、その後に untouched `depth5_random` / `depth6_random` を埋めることです。
 
 ## 8. 現実装の strict success 判定は論文本文より厳しい
 
@@ -231,7 +236,7 @@ Section 4.3 と現実装の距離感は、次のように理解するのが実�
 - 論文の parameterization: まだ別物
 - 論文の評価規模: まだ未到達
 - 論文の成功率: まだ未再現
-- 実装修正の次の焦点候補: `depth3` / `depth4` の multi-seed 確認、その次に `depth5+` へ広げること
+- 実装修正の次の焦点候補: `depth4 random_hot` の wider-seed 確認、その次に `depth5_random` / `depth6_random` へ広げること
 
 つまり、現コードベースは
 「Section 4.3 を Julia で研究し直すための再構成版」
