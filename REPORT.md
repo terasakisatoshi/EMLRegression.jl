@@ -17,7 +17,7 @@ Current work is in the measurement/reporting phase. The sweep and summary script
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a stronger tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in the current `4`-seed slice, `depth3` is `16/16` stable-symbolic in that slice, `depth4` is `14/16` stable-symbolic with failures concentrated in `random_hot`, and the manual `depth5_manual_noise12` rerun is `4/4` stable-symbolic. The `depth6_manual_noise12` rerun is now explicitly split into `4/4` post-recovery stable-symbolic versus `0/4` extern-style stable-symbolic, which removes the earlier apples-to-oranges comparison against the PyTorch README. The remaining gap has shifted away from one-seed recovery quality and toward wider random-start confirmation plus the untouched `depth5_random` / `depth6_random` families.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a stronger tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in the current `4`-seed slice, `depth3` is `16/16` stable-symbolic in that slice, `depth4` is `14/16` stable-symbolic with failures concentrated in `random_hot`, and the manual `depth5_manual_noise12` rerun is `4/4` stable-symbolic. The new extern-style export also shows that `depth4` is `0/16` stable before recovery cleanup, and `depth6_manual_noise12` is `4/4` post-recovery stable-symbolic versus `0/4` extern-style stable-symbolic, which removes the earlier apples-to-oranges comparison against the PyTorch README. The remaining gap has shifted away from one-seed recovery quality and toward wider random-start confirmation plus the untouched `depth5_random` / `depth6_random` families.
 
 ## What Was Done
 
@@ -151,14 +151,14 @@ This worktree now has a wider local paper-budget rerun for `depth3` / `depth4` r
 
 - `pnas_d2_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `depth3` random-start slice (`seed0=137`, `seeds=4`): `16/16` fit, `16/16` symbolic, `16/16` stable symbolic across `biased`, `uniform`, `xy_biased`, and `random_hot`, with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`
-- `depth4` random-start slice (`seed0=137`, `seeds=4`): `14/16` fit, `14/16` symbolic, `14/16` stable symbolic, with `biased/uniform/xy_biased = 4/4` stable and `random_hot = 2/4` stable; all runs still report `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`
+- `depth4` random-start slice (`seed0=137`, `seeds=4`): `14/16` fit, `14/16` symbolic, `14/16` post-recovery stable symbolic, but `0/16` extern-style stable symbolic with `mean_pre_recovery_n_uncertain ≈ 21-25`; `biased/uniform/xy_biased = 4/4` post-recovery stable and `random_hot = 2/4` post-recovery stable; all runs still report `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`
 - `pnas_d5_manual_noise12`: `4/4` fit, `4/4` symbolic, `4/4` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `pnas_d6_manual_noise12`: `4/4` fit, `4/4` symbolic, `4/4` post-recovery stable symbolic, but `0/4` extern-style stable symbolic with `mean_pre_recovery_n_uncertain = 2.5`; `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 
 This local rerun is still too small to replace the paper-scale tendency table, but it is large enough to change the near-term debugging targets:
 
 - `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the current `4`-seed slice, and every sampled run is `fit_success=true`, `symbol_success=true`, and `stable_symbol_success=true`.
-- `depth4` is also finite across the current `4`-seed slice with the same zero-nonfinite profile, but `random_hot` still drops to `2/4` stable-symbolic runs while the other three init families are `4/4`.
+- `depth4` is also finite across the current `4`-seed slice with the same zero-nonfinite profile, but `random_hot` still drops to `2/4` post-recovery stable-symbolic runs while the other three init families are `4/4`; before cleanup, all four families remain `0/4` extern-style stable.
 - `depth5_manual_noise12` matches the extern README tendency at `4/4` stable symbolic.
 - `depth6_manual_noise12` now matches the extern README once the same metric is used: the local rerun is `4/4` stable symbolic after Julia recovery cleanup, but `0/4` on the exported extern-style pre-recovery metric.
 
