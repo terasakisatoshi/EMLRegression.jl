@@ -202,15 +202,38 @@ function _snap_state_key(ps)
     return join(parts, ",")
 end
 
-function _projected_snap_metrics(tree::EMLTree, ps, st, x_train, y_train, t_train; tau::Float64=0.01, k::Float64=24.0)
+function _projected_snap_metrics(
+    tree::EMLTree,
+    ps,
+    st,
+    x_train,
+    y_train,
+    t_train;
+    tau::Float64=0.01,
+    snap_threshold::Float64=0.01,
+    k::Float64=24.0,
+)
     snapped = hard_project(ps; k=k)
     snap_mse, snap_max_real, snap_max_imag = evaluate(tree, snapped, st, x_train, y_train, t_train; tau=tau)
     return (
         snapped_params=snapped,
+        snap_info=analyze_snap(ps; snap_threshold=snap_threshold),
         snap_mse=snap_mse,
         snap_max_real=snap_max_real,
         snap_max_imag=snap_max_imag,
     )
+end
+
+function _snap_metrics_better(candidate_metrics, best_metrics; mse_tol::Float64=1.0e-18)
+    if candidate_metrics.snap_mse + mse_tol < best_metrics.snap_mse
+        return true
+    end
+
+    if abs(candidate_metrics.snap_mse - best_metrics.snap_mse) <= mse_tol
+        return candidate_metrics.snap_info.n_uncertain < best_metrics.snap_info.n_uncertain
+    end
+
+    return false
 end
 
 function _refine_snap_projection(
@@ -227,7 +250,17 @@ function _refine_snap_projection(
     beam_width::Int=64,
 )
     best_params = _copy_params(ps)
-    best_metrics = _projected_snap_metrics(tree, best_params, st, x_train, y_train, t_train; tau=tau, k=k)
+    best_metrics = _projected_snap_metrics(
+        tree,
+        best_params,
+        st,
+        x_train,
+        y_train,
+        t_train;
+        tau=tau,
+        snap_threshold=snap_threshold,
+        k=k,
+    )
     improved = false
     frontier = [(params=best_params, metrics=best_metrics)]
     seen = Set([_snap_state_key(best_params)])
@@ -242,10 +275,20 @@ function _refine_snap_projection(
                 key in seen && continue
                 push!(seen, key)
 
-                candidate_metrics = _projected_snap_metrics(tree, candidate, st, x_train, y_train, t_train; tau=tau, k=k)
+                candidate_metrics = _projected_snap_metrics(
+                    tree,
+                    candidate,
+                    st,
+                    x_train,
+                    y_train,
+                    t_train;
+                    tau=tau,
+                    snap_threshold=snap_threshold,
+                    k=k,
+                )
                 push!(candidates, (params=candidate, metrics=candidate_metrics))
 
-                if candidate_metrics.snap_mse + 1.0e-18 < best_metrics.snap_mse
+                if _snap_metrics_better(candidate_metrics, best_metrics)
                     best_params = candidate
                     best_metrics = candidate_metrics
                     improved = true
@@ -254,14 +297,14 @@ function _refine_snap_projection(
         end
 
         isempty(candidates) && break
-        sort!(candidates; by=state -> state.metrics.snap_mse)
+        sort!(candidates; by=state -> (state.metrics.snap_mse, state.metrics.snap_info.n_uncertain))
         frontier = candidates[1:min(beam_width, length(candidates))]
     end
 
     return (
         params=best_params,
         snapped_params=best_metrics.snapped_params,
-        snap_info=analyze_snap(best_params; snap_threshold=snap_threshold),
+        snap_info=best_metrics.snap_info,
         snap_mse=best_metrics.snap_mse,
         snap_max_real=best_metrics.snap_max_real,
         snap_max_imag=best_metrics.snap_max_imag,

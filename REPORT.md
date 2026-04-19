@@ -160,8 +160,8 @@ This worktree now has a small local paper-budget rerun:
 
 This sample is too small to replace the paper-scale tendency table, but it is large enough to suggest the next two debugging targets:
 
-- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, and it is now `4/4` on `fit_success` and `symbol_success`; however, all four sampled families still end with nonzero ambiguity and `stable_symbol_success=false`.
-- `depth4` is also `4/4` on `fit_success` and `symbol_success` in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` is no longer a special overflow case, but the family still ends with high ambiguity and `stable_symbol_success=false`.
+- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, and it is now `4/4` on `fit_success` and `symbol_success`; the latest ambiguity-aware recovery pass compresses the sampled `n_uncertain` range to `1-4`, but all four families still end with `stable_symbol_success=false`.
+- `depth4` is also `4/4` on `fit_success` and `symbol_success` in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` is no longer a special overflow case, and the latest recovery pass reduces the sampled `n_uncertain` range to `13-17`, but the family still ends with `stable_symbol_success=false`.
 
 Four training-path changes were active during this rerun:
 
@@ -169,6 +169,10 @@ Four training-path changes were active during this rerun:
 - the faithful loss path now defaults to linear uncertainty weighting (`uncertainty_power=1.0`) to match the current PyTorch reference more closely
 - nonfinite gradient entries are scrubbed before clipping/update, and raw results now record those events separately as `nonfinite_grad_steps`
 - gate probabilities now use a numerically stable sigmoid in both training and snapping paths, avoiding `exp` overflow in the hardening tail
+
+One recovery-side change was active during the latest rerun:
+
+- the snap beam now breaks near-equal candidates by lower ambiguity count, so fixed-seed `depth3` recovery no longer gets stuck on a higher-ambiguity exact projection when a lower-ambiguity exact projection is already in beam reach
 
 The summary pipeline also needed one robustness fix: failed runs can emit `hardening_iter = null`, so `scripts/summarize_results.jl` now loads that field as missing and emits `NaN` for group means when no hardening iteration exists instead of crashing during aggregation.
 
@@ -193,7 +197,7 @@ This confirmed the runner propagates the reduced-sweep overrides correctly, and 
 
 ### Priority 1: Stable Recovery Before The Expensive Full Sweep
 
-The local sample rerun no longer points to `depth3` as a broad numerical-instability problem or as a blind symbolic-recovery failure. The next pass should target ambiguity reduction and `stable_symbol_success` quality across `depth3` and `depth4`, then rerun the expensive full paper-style sweep:
+The local sample rerun no longer points to `depth3` as a broad numerical-instability problem or as a blind symbolic-recovery failure. The next pass should target ambiguity reduction and `stable_symbol_success` quality across `depth4` first, then close out the remaining `depth3` ambiguity tail, and only then rerun the expensive full paper-style sweep:
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
@@ -213,7 +217,7 @@ The eventual measurement deliverable is still the family tendency table for:
 
 The current local evidence suggests three concrete follow-ups:
 
-- investigate how to reduce ambiguity so that the new `depth3` and `depth4` one-seed symbolic wins also reach `stable_symbol_success`
+- investigate how to reduce ambiguity so that the sampled `depth4` symbolic wins move below the current `n_uncertain=13-17` range and the sampled `depth3` wins finish the last `n_uncertain=1-4` gap to `stable_symbol_success`
 - confirm whether the new `depth3` / `depth4` one-seed symbolic wins survive a wider seed sample, especially for `random_hot`
 - compare those cases against the PyTorch implementation's hardening dynamics and saturation behavior
 - re-run the full sweep only after the above tentative signal improves enough to justify the compute

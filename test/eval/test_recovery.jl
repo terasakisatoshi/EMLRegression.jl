@@ -450,4 +450,5 @@ end
     @test mse_after < mse_before
     @test mse_after < 1.0e-20
     @test refined.improved
+    @test refined.snap_info.n_uncertain <= 5
 end
