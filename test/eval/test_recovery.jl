@@ -303,3 +303,99 @@ end
     @test !refined.improved
     @test mse_after == mse_before
 end
+
+@testset "snap refinement can escape greedy traps with coupled discrete moves" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=1.6,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            24.0 -24.0 -24.0;
+            24.0 -24.0 -24.0;
+            1.0 -2.0 -0.5;
+            -2.0 -1.0 2.0;
+        ],
+        blend_logits=[
+            24.0 24.0;
+            1.0 -24.0;
+            24.0 -24.0;
+        ],
+    )
+
+    snapped_before = hard_project(ps)
+    mse_before, _, _ = EMLRegression.evaluate(tree, snapped_before, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    mse_after, _, _ = EMLRegression.evaluate(tree, refined.snapped_params, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test mse_after < mse_before
+    @test mse_after < 1.0e-20
+    @test refined.improved
+    @test refined.snap_info.n_uncertain == 0
+end
+
+@testset "snap refinement can revisit low-margin stable gates" begin
+    cfg = TrainConfig(
+        target=:eml_depth2,
+        depth=2,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=1.6,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            -0.2 -5.5 -6.0;
+            24.0 -24.0 -24.0;
+            -6.0 -0.1 5.0;
+            -5.0 6.0 -0.1;
+        ],
+        blend_logits=[
+            24.0 24.0;
+            5.0 -24.0;
+            4.8 -24.0;
+        ],
+    )
+
+    @test analyze_snap(ps; snap_threshold=cfg.snap_threshold).n_uncertain == 0
+
+    snapped_before = hard_project(ps)
+    mse_before, _, _ = EMLRegression.evaluate(tree, snapped_before, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    mse_after, _, _ = EMLRegression.evaluate(tree, refined.snapped_params, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test mse_after < mse_before
+    @test mse_after < 1.0e-20
+    @test refined.improved
+    @test refined.snap_info.n_uncertain == 0
+end
