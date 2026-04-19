@@ -399,3 +399,55 @@ end
     @test refined.improved
     @test refined.snap_info.n_uncertain == 0
 end
+
+@testset "snap refinement can flip confident gates on depth3-style fixtures" begin
+    cfg = TrainConfig(
+        target=:eml_depth3,
+        depth=3,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            1.3574 5.9571 -7.2174;
+            1.0212 -12.2938 1.0316;
+            -6.1963 -6.8260 9.1048;
+            -2.8762 15.5771 -5.3279;
+            1.2469 6.8389 -3.6049;
+            0.0966 4.7683 2.0959;
+            0.0427 8.2359 -5.4291;
+            -5.5683 -9.8341 6.1036;
+        ],
+        blend_logits=[
+            0.0399 -5.3467;
+            -8.0269 -11.8398;
+            0.0889 0.0178;
+            4.6150 -7.8325;
+            -2.3970 -6.0851;
+            -4.3508 4.9737;
+            0.0227 -2.7662;
+        ],
+    )
+
+    mse_before, _, _ = EMLRegression.evaluate(tree, hard_project(ps), NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    mse_after, _, _ = EMLRegression.evaluate(tree, refined.snapped_params, NamedTuple(), x_train, y_train, t_train; tau=cfg.tau_hard)
+
+    @test mse_after < mse_before
+    @test mse_after < 1.0e-20
+    @test refined.improved
+end

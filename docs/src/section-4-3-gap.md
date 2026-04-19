@@ -189,16 +189,16 @@ depth 5 と 6 でも 100% 戻ると述べています。
 
 その一方で、この small sample rerun からは次の偏りが暫定的に見えています。
 
-- `depth3` は random init 4 family すべてで依然 `0/1` success だが、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0` まで改善した
-- `depth4` はこの sample では 4 family すべてが `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `depth4 random_hot` も `1/1` fit, `1/1` symbolic まで改善したが、`stable_symbol_success` にはまだ届かず ambiguity は高い
+- `depth3` は random init 4 family すべてで `1/1` fit, `1/1` symbolic まで改善し、この rerun では `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `depth4` も random init 4 family すべてで `1/1` fit, `1/1` symbolic まで改善し、`nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- ただし `depth3` / `depth4` とも sampled families は still `stable_symbol_success=0/1` で、ambiguity count が残る
 
 という状態です。
 
 したがって、現在の結果を論文の成功率と直接比較するのは危険です。
-現状は「構造と実験導線はあるが、統計規模と最終性能は未再現」であり、
+現状は「構造と実験導線はあるが、統計規模と stable-success 水準は未再現」であり、
 ここでの `nonfinite_steps` / `nan_restarts` は gradient scrub 後の recorded failure を見ている点には注意が必要です。
-次の実装上の焦点候補は `depth3` の symbolic recovery 改善と、改善後の `depth4 random_hot` を multi-seed で確認することです。
+次の実装上の焦点候補は sampled symbolic wins の ambiguity を減らして `stable_symbol_success` へ寄せることと、その後の multi-seed 確認です。
 
 ## 8. 現実装の strict success 判定は論文本文より厳しい
 
@@ -231,7 +231,7 @@ Section 4.3 と現実装の距離感は、次のように理解するのが実�
 - 論文の parameterization: まだ別物
 - 論文の評価規模: まだ未到達
 - 論文の成功率: まだ未再現
-- 実装修正の次の焦点候補: `depth3` の symbolic recovery 改善、その次に `depth4 random_hot` の multi-seed 確認
+- 実装修正の次の焦点候補: `depth3` / `depth4` の ambiguity 減少と `stable_symbol_success` 改善、その次に multi-seed 確認
 
 つまり、現コードベースは
 「Section 4.3 を Julia で研究し直すための再構成版」

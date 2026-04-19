@@ -17,7 +17,7 @@ Current work is in the measurement/reporting phase. The sweep and summary script
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
 ```
 
-The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, symbolic recovery is still absent there, and `depth4 random_hot` has moved from a catastrophic overflow case to a one-seed success that still needs wider confirmation.
+The local raw artifacts are still far short of the full paper sweep, but they are enough to provide a tentative signal: the broad `depth3` forward/post-update and nonfinite-gradient loop is suppressed in this sample, all sampled `depth3`/`depth4` random-init families now reach `symbol_success=true`, and the remaining gap has shifted to ambiguity-heavy `stable_symbol_success=false` outcomes that still need wider confirmation.
 
 ## What Was Done
 
@@ -149,19 +149,19 @@ Additional regression coverage now exists for:
 This worktree now has a small local paper-budget rerun:
 
 - `pnas_d2_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d3_random-random_hot`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-uniform`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
-- `pnas_d4_random-xy_biased`: `0/1` fit, `0/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-uniform`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-xy_biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d3_random-random_hot`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-uniform`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
+- `pnas_d4_random-xy_biased`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`
 - `pnas_d4_random-random_hot`: `1/1` fit, `1/1` symbolic, `0/1` stable symbolic, `nonfinite_steps=0`, `nonfinite_grad_steps=0`, `nan_restarts=0`, `failure_reason=no_failure`
 
 This sample is too small to replace the paper-scale tendency table, but it is large enough to suggest the next two debugging targets:
 
-- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, but it is still `0/4` on symbolic recovery.
-- `depth4` is forward-stable across all four random initialization families in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` now reaches `fit_success=true` and `symbol_success=true` for the sampled seed, but still ends with high ambiguity and `stable_symbol_success=false`.
+- `depth3` no longer shows recorded forward/post-update nonfinite, nonfinite-gradient, or restart pressure across the four random initialization families in this sample, and it is now `4/4` on `fit_success` and `symbol_success`; however, all four sampled families still end with nonzero ambiguity and `stable_symbol_success=false`.
+- `depth4` is also `4/4` on `fit_success` and `symbol_success` in this sample with `nonfinite_steps=0`, `nonfinite_grad_steps=0`, and `nan_restarts=0`; `random_hot` is no longer a special overflow case, but the family still ends with high ambiguity and `stable_symbol_success=false`.
 
 Four training-path changes were active during this rerun:
 
@@ -191,9 +191,9 @@ This confirmed the runner propagates the reduced-sweep overrides correctly, and 
 
 ## Remaining Work
 
-### Priority 1: Depth3 Recovery Before The Expensive Full Sweep
+### Priority 1: Stable Recovery Before The Expensive Full Sweep
 
-The local sample rerun no longer points to `depth3` as a broad numerical-instability problem. The next pass should target `depth3` symbolic recovery quality itself, then rerun the expensive full paper-style sweep:
+The local sample rerun no longer points to `depth3` as a broad numerical-instability problem or as a blind symbolic-recovery failure. The next pass should target ambiguity reduction and `stable_symbol_success` quality across `depth3` and `depth4`, then rerun the expensive full paper-style sweep:
 
 ```bash
 ~/.juliaup/bin/julia --project=. scripts/summarize_results.jl
@@ -213,8 +213,8 @@ The eventual measurement deliverable is still the family tendency table for:
 
 The current local evidence suggests three concrete follow-ups:
 
-- investigate why `depth3` still ends `0/4` on symbolic recovery even after the broad forward/post-update and nonfinite-gradient loop is suppressed
-- confirm whether the new `depth4 random_hot` one-seed success survives a wider seed sample and whether its ambiguity can be reduced enough to reach `stable_symbol_success`
+- investigate how to reduce ambiguity so that the new `depth3` and `depth4` one-seed symbolic wins also reach `stable_symbol_success`
+- confirm whether the new `depth3` / `depth4` one-seed symbolic wins survive a wider seed sample, especially for `random_hot`
 - compare those cases against the PyTorch implementation's hardening dynamics and saturation behavior
 - re-run the full sweep only after the above tentative signal improves enough to justify the compute
 
@@ -253,4 +253,4 @@ After the next stabilization pass:
 
 The rewrite has crossed the structural milestone and the paper-budget hardening blocker is fixed. The current state is no longer "the sweep crashes immediately."
 
-The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, but symbolic recovery is still absent there, while `depth4 random_hot` is no longer a catastrophic overflow case and now needs broader confirmation rather than emergency stabilization. The full sweep still matters, but it should follow the next recovery-quality pass rather than lead it.
+The new local rerun changes the tentative prioritization: recorded forward/post-update and nonfinite-gradient `depth3` failures are suppressed in this sample, and symbolic recovery is now present across sampled `depth3` and `depth4` random-init families. The remaining gap is stable recovery under strict ambiguity counting, plus broader seed confirmation. The full sweep still matters, but it should follow the next ambiguity-reduction pass rather than lead it.

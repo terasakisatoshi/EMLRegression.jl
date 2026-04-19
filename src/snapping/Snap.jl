@@ -124,8 +124,6 @@ function _candidate_snap_moves(
     ps;
     snap_threshold::Float64=0.01,
     k::Float64=24.0,
-    stable_leaf_budget::Int=2,
-    stable_gate_budget::Int=2,
 )
     leaf_probs = _softmax_rows(ps.leaf_logits, 1.0)
     gate_probs = _gate_probs(ps.blend_logits, 1.0)
@@ -145,9 +143,10 @@ function _candidate_snap_moves(
 
         order = sortperm(probs; rev=true)
         best_choice = order[1]
-        alt_choice = order[2]
-        margin = probs[best_choice] - probs[alt_choice]
-        push!(stable_leaf_moves, (margin, (:leaf, i, alt_choice, k)))
+        for alt_choice in order[2:end]
+            margin = probs[best_choice] - probs[alt_choice]
+            push!(stable_leaf_moves, (margin, (:leaf, i, alt_choice, k)))
+        end
     end
 
     stable_gate_moves = Tuple{Float64,Tuple}[]
@@ -166,12 +165,12 @@ function _candidate_snap_moves(
     end
 
     sort!(stable_leaf_moves; by=first)
-    for (_, move) in Iterators.take(stable_leaf_moves, stable_leaf_budget)
+    for (_, move) in stable_leaf_moves
         _push_unique_move!(moves, seen, move)
     end
 
     sort!(stable_gate_moves; by=first)
-    for (_, move) in Iterators.take(stable_gate_moves, stable_gate_budget)
+    for (_, move) in stable_gate_moves
         _push_unique_move!(moves, seen, move)
     end
 
@@ -225,7 +224,7 @@ function _refine_snap_projection(
     snap_threshold::Float64=0.01,
     k::Float64=24.0,
     max_steps::Int=8,
-    beam_width::Int=8,
+    beam_width::Int=64,
 )
     best_params = _copy_params(ps)
     best_metrics = _projected_snap_metrics(tree, best_params, st, x_train, y_train, t_train; tau=tau, k=k)
