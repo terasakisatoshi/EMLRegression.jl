@@ -70,6 +70,44 @@ function concrete_specs(job_key, parsed)
     return specs
 end
 
+function passthrough_args(parsed)
+    passthrough_flags = (
+        "--lr",
+        "--tau-search",
+        "--tau-hard",
+        "--hardening-tau-power",
+        "--hardening-lr-floor",
+        "--patience",
+        "--patience-threshold",
+        "--plateau-rtol",
+        "--lam-ent-hard",
+        "--lam-bin-hard",
+        "--lam-inter",
+        "--inter-threshold",
+        "--eml-clamp",
+        "--tail-eval-tau",
+        "--early-stop-count",
+        "--hard-trigger-mse",
+        "--hard-trigger-count",
+        "--nan-restart-patience",
+        "--max-nan-restarts",
+        "--fit-success-thr",
+        "--success-thr",
+        "--snap-threshold",
+        "--max-uncertain-success",
+        "--lbfgs-steps",
+        "--lbfgs-lr",
+        "--grad-clip-norm",
+    )
+    args = String[]
+    for flag in passthrough_flags
+        if haskey(parsed, flag)
+            push!(args, flag, parsed[flag])
+        end
+    end
+    return args
+end
+
 function write_temp_config(path, spec)
     open(path, "w") do io
         println(io, "name = \"$(spec.config_name)\"")
@@ -94,13 +132,19 @@ function write_temp_config(path, spec)
     return path
 end
 
-function run_spec(spec, repo_root)
+function run_spec(spec, parsed, repo_root)
     run_experiment_script = joinpath(repo_root, "scripts", "run_experiment.jl")
     mktempdir() do dir
         cfg_path = write_temp_config(joinpath(dir, "$(spec.config_name).toml"), spec)
+        extra_args = passthrough_args(parsed)
         for seed in spec.seed0:(spec.seed0 + spec.seeds - 1)
-            cmd = `$(Base.julia_cmd()) --project=$(repo_root) $(run_experiment_script) --config $(cfg_path) --target $(spec.target) --seed $(seed)`
-            run(Cmd(cmd; dir=pwd()))
+            argv = vcat(
+                collect(Base.julia_cmd().exec),
+                ["--project=$(repo_root)", run_experiment_script, "--config", cfg_path, "--target", spec.target, "--seed", string(seed)],
+                extra_args,
+            )
+            cmd = Cmd(Cmd(argv); dir=pwd())
+            run(cmd)
         end
     end
 end
@@ -110,6 +154,6 @@ repo_root = normpath(joinpath(@__DIR__, ".."))
 
 for job_key in selected_job_keys(parsed)
     for spec in concrete_specs(job_key, parsed)
-        run_spec(spec, repo_root)
+        run_spec(spec, parsed, repo_root)
     end
 end

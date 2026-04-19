@@ -96,6 +96,8 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "snap_max_real" => _json_float(outcome.recovery.snap_max_real),
         "snap_max_imag" => _json_float(outcome.recovery.snap_max_imag),
         "hardening_iter" => outcome.recovery.hardening_iter,
+        "lbfgs_steps" => cfg.lbfgs_steps,
+        "lbfgs_lr" => cfg.lbfgs_lr,
         "hardening_reason" => begin
             reason = get(outcome.training.summary, :hardening_reason, nothing)
             isnothing(reason) ? nothing : string(reason)
