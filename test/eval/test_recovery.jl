@@ -50,6 +50,7 @@ end
                 :fit_success => true,
                 :symbol_success => true,
                 :stable_symbol_success => i % 2 == 0,
+                :extern_style_stable_symbol_success => i == 1,
                 :success => true,
                 :n_uncertain => 0,
                 :nonfinite_steps => 0,
@@ -78,8 +79,10 @@ end
         grouped = Dict((String(row.family), String(row.init_strategy)) => row for row in eachrow(rows))
         @test grouped[("depth2", "biased")].fit_count == 1
         @test grouped[("depth3", "random_hot")].symbol_count == 1
+        @test grouped[("depth2", "biased")].extern_style_stable_symbol_count == 1
         @test grouped[("depth5_manual_noise12", "manual")].runs == 1
         @test grouped[("depth6_manual_noise12", "manual")].stable_symbol_count == 0
+        @test grouped[("depth6_manual_noise12", "manual")].extern_style_stable_symbol_count == 0
     end
 end
 
@@ -99,6 +102,7 @@ end
             :fit_success => false,
             :symbol_success => false,
             :stable_symbol_success => false,
+            :extern_style_stable_symbol_success => false,
             :success => false,
             :n_uncertain => 46,
             :nonfinite_steps => 5000,
@@ -122,10 +126,12 @@ end
         @test nrow(summary) == 1
         @test isnan(summary.mean_hardening_iter[1])
         @test summary.mean_nonfinite_grad_steps[1] == 17.0
+        @test summary.extern_style_stable_symbol_success_rate[1] == 0.0
         @test nrow(section) == 1
         @test section.nonfinite_steps[1] == 5000
         @test section.nonfinite_grad_steps[1] == 17
         @test section.nan_restarts[1] == 100
+        @test section.extern_style_stable_symbol_count[1] == 0
     end
 end
 
@@ -146,6 +152,7 @@ end
                 :fit_success => true,
                 :symbol_success => true,
                 :stable_symbol_success => false,
+                :extern_style_stable_symbol_success => false,
                 :success => true,
                 :n_uncertain => 0,
                 :nonfinite_steps => 0,
@@ -168,6 +175,7 @@ end
                 :fit_success => false,
                 :symbol_success => false,
                 :stable_symbol_success => false,
+                :extern_style_stable_symbol_success => false,
                 :success => false,
                 :n_uncertain => 9,
                 :nonfinite_steps => 0,
@@ -192,6 +200,7 @@ end
         @test section.family[1] == "depth2"
         @test section.init_strategy[1] == "biased"
         @test section.fit_count[1] == 1
+        @test section.extern_style_stable_symbol_count[1] == 0
         @test section.runs[1] == 1
     end
 end
@@ -647,4 +656,114 @@ end
 
     @test analyze_snap(ps; snap_threshold=0.01).n_uncertain >= 17
     @test EMLRegression._default_snap_max_steps(ps; snap_threshold=0.01) == 30
+end
+
+@testset "depth5 random-hot fixture remains fit but not stable after cleanup" begin
+    cfg = TrainConfig(
+        target=:eml_depth5,
+        depth=5,
+        snap_threshold=0.01,
+        data_lo=1.0,
+        data_hi=3.0,
+        data_step=0.1,
+    )
+    target = get_target(cfg.target)
+    x_train, y_train, t_train = make_grid_data(target.fn; lo=cfg.data_lo, hi=cfg.data_hi, step=cfg.data_step)
+    tree = EMLTree(depth=cfg.depth, eml_clamp=cfg.eml_clamp)
+    ps = (
+        leaf_logits=[
+            5.74176 -2.4342 -4.06997;
+            -1.34698 -2.68765 6.14977;
+            -2.7774 5.95877 -1.97861;
+            -1.01404 6.8753 -6.94618;
+            0.564552 5.09017 -3.52483;
+            1.30462 2.12608 11.0147;
+            -0.778221 7.89143 -2.68392;
+            -3.94643 -2.40491 11.1614;
+            -0.869901 5.04849 -3.85146;
+            -3.27545 8.84534 -7.52448;
+            -1.07157 3.75394 1.76077;
+            -0.217154 -3.15396 8.64083;
+            7.35795 -4.12221 -4.93966;
+            -2.65746 6.36779 -3.39002;
+            -5.20497 9.96696 -2.9083;
+            -3.2238 5.61497 -6.77594;
+            1.08364 3.34175 2.02292;
+            -1.7184 -1.35699 4.53845;
+            -3.26658 9.26919 -2.2311;
+            -1.40274 -5.3181 8.06812;
+            -2.14507 15.6311 -2.19826;
+            -2.22116 -5.406 12.2837;
+            -3.5325 9.04582 -6.33408;
+            -4.12025 -6.61433 9.17693;
+            5.92875 -4.06788 -5.46967;
+            -2.61731 -2.58878 7.22414;
+            -2.21502 6.92997 0.345498;
+            -2.98619 -8.37736 7.14369;
+            -1.58506 7.1984 0.651361;
+            -0.368409 -7.82311 2.21476;
+            6.62974 -5.91033 -3.80675;
+            -5.58177 9.23027 -5.41197;
+        ],
+        blend_logits=[
+            5.55289 3.41811;
+            2.37592 5.03011;
+            0.0152671 0.0171867;
+            6.05842 5.53513;
+            -0.0996763 -9.17491;
+            -5.4797 9.50393;
+            8.53264 6.66265;
+            -7.29727 7.76889;
+            -0.182599 -0.279013;
+            -5.37442 5.85908;
+            -3.4499 -9.13378;
+            -4.98488 -9.25765;
+            7.24346 -4.46472;
+            -5.42532 -4.14161;
+            2.48025 4.65599;
+            8.62056 -5.82112;
+            4.67993 1.94532;
+            -0.991193 6.7744;
+            0.00697269 0.681942;
+            5.57699 6.48509;
+            0.0274996 -5.11684;
+            4.99223 -5.8921;
+            9.41416 -8.10329;
+            -4.22556 8.4553;
+            5.85512 -1.68434;
+            0.0519342 5.80469;
+            0.21325 7.66356;
+            10.0926 -10.921;
+            0.0221009 -4.13409;
+            -0.181728 -0.488174;
+            -0.56065 -10.2044;
+        ],
+    )
+
+    pre_snap = analyze_snap(ps; snap_threshold=cfg.snap_threshold)
+    refined = EMLRegression._refine_snap_projection(
+        tree,
+        ps,
+        NamedTuple(),
+        x_train,
+        y_train,
+        t_train;
+        tau=cfg.tau_hard,
+        snap_threshold=cfg.snap_threshold,
+    )
+    verdict = recovery_verdict(
+        snap_mse=refined.snap_mse,
+        snap_max_real=refined.snap_max_real,
+        snap_max_imag=refined.snap_max_imag,
+        n_uncertain=refined.snap_info.n_uncertain,
+        fit_success_thr=cfg.fit_success_thr,
+        success_thr=cfg.success_thr,
+        max_uncertain_success=cfg.max_uncertain_success,
+    )
+
+    @test pre_snap.n_uncertain == 29
+    @test verdict.fit_success
+    @test verdict.symbol_success
+    @test !verdict.stable_symbol_success
+    @test refined.snap_info.n_uncertain == 5
 end
