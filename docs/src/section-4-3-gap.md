@@ -27,6 +27,55 @@
 - 数値安定化の作り
 - target suite と評価規模
 
+## 現状サマリ
+
+現時点での実装状態を、まず「できていること」と「まだできていないこと」に分けると次の通りです。
+
+### できていること
+
+- Section 4.3 の主要な流れ
+  - 固定深さ `EMLTree`
+  - `SEARCH -> HARDENING`
+  - snapping
+  - blind recovery 判定
+  は Julia 側で end-to-end に動いている
+- `depth2` から `depth6` までの paper-aligned target と sweep CLI が揃っており、raw JSON と summary CSV を継続的に出せる
+- hardening tail の stable sigmoid、tree path の `exp` clamp、nonfinite gradient scrubbing など、論文系実装で問題になった数値安定化は一通り入っている
+- recovery 側は extern より強い cleanup を持っていて、small-sample rerun では
+  - `depth3` random 4 family × `4` seeds が `16/16` post-recovery stable
+  - `depth4` random 4 family × `4` seeds が `14/16` post-recovery stable
+  - `depth5_manual_noise12` が `4/4` post-recovery stable
+  - `depth6_manual_noise12` が `4/4` post-recovery stable
+  まで確認できている
+- extern / README 比較用に、現在は metric を 2 本立てで export できる
+  - Julia recovery 後の `stable_symbol_success`
+  - extern 相当の pre-recovery `extern_style_stable_symbol_success`
+- その結果、たとえば `depth6_manual_noise12` は
+  - post-recovery では `4/4` stable
+  - extern-style では `0/4` stable
+  と分けて読めるようになり、README との差分を apples-to-apples で説明できる
+- `depth3` instability、`depth4 random_hot` overflow、`depth5_random` ambiguity tail など、主要 failure mode を regression test と diagnostics で固定し始めている
+
+### まだできていないこと
+
+- 論文スケールの full sweep はまだ完了していない
+  - 特に `depth5_random` / `depth6_random` random-start family は未完了、または local partial rerun 段階
+- blind recovery の深い random family は、まだ論文に近い成功率を再現できていない
+  - 少なくとも local partial rerun では `depth5_random random_hot` が stable 未達
+  - `depth6_random random_hot` は fit 自体が厳しい
+- extern-style pre-recovery metric で見ると、`depth3` / `depth4` ですら stable には寄り切っていない
+  - 現状の強さは learned soft state そのものより recovery cleanup 側に寄っている
+- 論文の `α + βx + γf` 型 master formula と simplex parameterization は、まだそのままは再現していない
+- basin-of-attraction 実験や full paper table を、そのまま論文と比較できる統計規模で揃えるところまでは届いていない
+
+要するに、現状は
+
+- Section 4.3 の研究用 Julia 実装としてはかなり前進している
+- recovery pipeline は実用上かなり強い
+- ただし、論文そのものの random-start success rate を再現したと言える段階ではまだない
+
+という位置づけです。
+
 ## 1. Master Formula の表現が違う
 
 論文の Section 4.3 では、各入力を
