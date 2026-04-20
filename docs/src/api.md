@@ -13,7 +13,10 @@ eml
 ```@docs
 MasterTree
 build_master_tree
+RecoveredTree
+EMLTree
 EMLTreeLayer
+formula_string
 ```
 
 ## 数値安定性
@@ -46,13 +49,10 @@ evaluate_target
 ## snapping と式出力
 
 ```@docs
-RecoveredTree
 snap_logits
-snap_model
-search_recovered_tree
-refine_recovered_tree
-evaluate_recovered
-formula_string
+analyze_snap
+hard_project
+hard_project!
 ```
 
 ## recovery 判定
@@ -60,6 +60,5 @@ formula_string
 ```@docs
 RecoveryVerdict
 recovery_verdict
-numerical_match
 run_experiment
 ```

@@ -4,6 +4,12 @@ using Optim
 using Optimisers
 using Zygote
 
+"""
+    run_training(cfg; rng=nothing, capture_diagnostics=false)
+
+paper-style EML tree の学習ループを実行します。
+search phase と hardening phase を通し、metric と最終 parameter/state を [`TrainingResult`](@ref) として返します。
+"""
 function run_training(cfg::TrainConfig; rng=nothing, capture_diagnostics::Bool=false)
     rng = isnothing(rng) ? StableRNG(cfg.seed) : rng
     target = get_target(cfg.target)

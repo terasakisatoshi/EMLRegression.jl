@@ -1,5 +1,11 @@
 using StableRNGs: StableRNG
 
+"""
+    TargetSpec
+
+実験 target の定義です。
+名前、arity、tier、推奨 depth、真の評価関数をまとめます。
+"""
 struct TargetSpec
     name::Symbol
     arity::Int
@@ -37,6 +43,11 @@ const TARGETS = Dict{Symbol,TargetSpec}(
     :eml_depth6 => TargetSpec(:eml_depth6, 2, :challenge, 6, _target_eml_depth6, "e - y*exp(e - exp(x))"),
 )
 
+"""
+    get_target(name)
+
+登録済み target を名前で取得します。
+"""
 get_target(name::Symbol) = TARGETS[name]
 
 function filter_real_domain(x, y, target_fn; imag_tol::Float64=1.0e-12)
@@ -68,6 +79,12 @@ function make_generalization_data(target_fn; lo::Float64=0.5, hi::Float64=5.0, n
     return filter_real_domain(x, y, target_fn)
 end
 
+"""
+    sample_domain(target, n; rng_seed=1, rng=nothing)
+
+target 用の入力点を `n` 個サンプルします。
+現在は `[1, 3]` の一様乱数を返します。
+"""
 function sample_domain(target::TargetSpec, n::Integer; rng_seed::Union{Integer,Nothing}=1, rng=nothing)
     if !isnothing(rng)
         x = 1.0 .+ 2.0 .* rand(rng, n)
@@ -80,6 +97,11 @@ function sample_domain(target::TargetSpec, n::Integer; rng_seed::Union{Integer,N
     return x, y
 end
 
+"""
+    evaluate_target(target, xs)
+
+入力 tuple `xs` 上で target を評価し、`ComplexF64` の配列を返します。
+"""
 function evaluate_target(target::TargetSpec, xs)
     x, y = xs
     return ComplexF64.(map(target.fn, ComplexF64.(x), ComplexF64.(y)))

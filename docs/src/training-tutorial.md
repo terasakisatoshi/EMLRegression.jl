@@ -7,21 +7,21 @@
 1. `TrainConfig` を作る
 2. `run_training` を呼んでメトリクスを見る
 3. `run_experiment` で recovery 判定まで流す
-4. `snap_model` と `formula_string` で現在の recovered 表現を確認する
+4. `analyze_snap` と `hard_project` で現在の snap 状態を確認する
 
 ## 1. 最小の設定を作る
 
-まずは `ln` を題材に、小さい設定を作ります。
+まずは `eml_depth2` を題材に、小さい設定を作ります。
 
 ```julia
 using EMLRegression
 
 cfg = TrainConfig(
     depth = 2,
-    target = :ln,
+    target = :eml_depth2,
     batch_size = 16,
-    steps = 8,
-    hardening_steps = 4,
+    search_iters = 8,
+    hardening_iters = 4,
 )
 ```
 
@@ -30,10 +30,10 @@ cfg = TrainConfig(
 - `depth`
   木の深さ
 - `target`
-  今回は `:ln`
-- `steps`
-  学習ループのステップ数
-- `hardening_steps`
+  今回は `:eml_depth2`
+- `search_iters`
+  search phase のステップ数
+- `hardening_iters`
   hardening 用に記録するステップ数
 
 現在の実装は研究用 scaffold なので、まずは `steps` を小さくして全体の流れを確認するのが適切です。
@@ -50,10 +50,11 @@ training = run_training(cfg; rng = StableRNG(1))
 
 ```julia
 training.failure_reason
-length(training.metrics[:train_loss])
-length(training.metrics[:hardening_loss])
-training.metrics[:train_loss][1]
-training.metrics[:train_loss][end]
+length(training.metrics[:soft_rmse])
+length(training.metrics[:hard_rmse])
+training.metrics[:soft_rmse][1]
+training.metrics[:soft_rmse][end]
+training.summary[:hardening_iter]
 ```
 
 今の実装ではパラメータ更新がまだ入っていないため、「本格的に学習して loss が下がる」ことよりも、
@@ -76,34 +77,31 @@ experiment = run_experiment(cfg; rng = StableRNG(1))
 
 ```julia
 experiment.recovery.success
-experiment.recovery.reason
-experiment.recovered_tree
-formula_string(experiment.recovered_tree)
+experiment.recovery.fit_success
+experiment.recovery.symbol_success
+experiment.recovery.stable_symbol_success
+experiment.snap.n_uncertain
 ```
 
-現時点では `formula_string` は非常に簡単な文字列表現しか返しません。これはまだ最小実装だからです。ここでは「学習から recovered tree までつながっている」ことを確認すれば十分です。
+ここでは「学習から snap/recovery 判定までつながっている」ことを確認すれば十分です。
 
-## 4. `snap_model` を自分で呼んでみる
+## 4. `analyze_snap` と `hard_project` を自分で呼んでみる
 
-`run_experiment` の内部では、学習後に layer と params から recovered tree を作っています。これを明示的に書くと次のようになります。
+`run_experiment` の内部では、学習後に logits の曖昧さを見て hard projection を作っています。これを明示的に書くと次のようになります。
 
 ```julia
-target = get_target(cfg.target)
-variables = target.arity == 1 ? (:x,) : (:x, :y)
+snap_info = analyze_snap(training.params; snap_threshold = cfg.snap_threshold)
+snapped = hard_project(training.params)
 
-tree = build_master_tree(depth = cfg.depth, variables = variables)
-layer = EMLTreeLayer(tree)
-
-recovered = snap_model(layer, training.params)
-
-formula_string(recovered)
+snap_info.n_uncertain
+snapped.leaf_logits
+snapped.blend_logits
 ```
 
 このコードで、
 
-- `cfg.target` から arity を取得する
-- それに応じて `MasterTree` を組む
-- その tree と学習済み params から snapping する
+- 学習済み params のどこがまだ曖昧かを見る
+- hard projection 後の leaf/gate logits を確認する
 
 という流れが見えます。
 
@@ -112,7 +110,7 @@ formula_string(recovered)
 学習対象そのものも、少しだけ覗いておくと理解が進みます。
 
 ```julia
-target = get_target(:ln)
+target = get_target(:eml_depth2)
 xs = sample_domain(target, 4; rng_seed = 1)
 ys = evaluate_target(target, xs)
 
@@ -139,31 +137,29 @@ using StableRNGs
 
 cfg = TrainConfig(
     depth = 2,
-    target = :ln,
+    target = :eml_depth2,
     batch_size = 16,
-    steps = 8,
-    hardening_steps = 4,
+    search_iters = 8,
+    hardening_iters = 4,
 )
 
 training = run_training(cfg; rng = StableRNG(1))
 
 println("failure_reason = ", training.failure_reason)
-println("train_loss_count = ", length(training.metrics[:train_loss]))
-println("hardening_loss_count = ", length(training.metrics[:hardening_loss]))
-println("last_train_loss = ", training.metrics[:train_loss][end])
+println("soft_rmse_count = ", length(training.metrics[:soft_rmse]))
+println("hard_rmse_count = ", length(training.metrics[:hard_rmse]))
+println("last_soft_rmse = ", training.metrics[:soft_rmse][end])
 
 experiment = run_experiment(cfg; rng = StableRNG(1))
-println("recovery_success = ", experiment.recovery.success)
-println("recovery_reason = ", experiment.recovery.reason)
-println("recovered_formula = ", formula_string(experiment.recovered_tree))
+println("fit_success = ", experiment.recovery.fit_success)
+println("symbol_success = ", experiment.recovery.symbol_success)
+println("stable_symbol_success = ", experiment.recovery.stable_symbol_success)
+println("n_uncertain = ", experiment.snap.n_uncertain)
 
-target = get_target(cfg.target)
-variables = target.arity == 1 ? (:x,) : (:x, :y)
-tree = build_master_tree(depth = cfg.depth, variables = variables)
-layer = EMLTreeLayer(tree)
-recovered = snap_model(layer, training.params)
-
-println("manual_snap_formula = ", formula_string(recovered))
+snap_info = analyze_snap(training.params; snap_threshold = cfg.snap_threshold)
+snapped = hard_project(training.params)
+println("manual_n_uncertain = ", snap_info.n_uncertain)
+println("manual_leaf_logits = ", snapped.leaf_logits)
 ```
 
 これは REPL でも、`julia --project=.` でそのまま流しても動きます。

@@ -164,6 +164,12 @@ end
 
 ChainRulesCore.@non_differentiable _child_id_from_symbol(::Any...)
 
+"""
+    EMLTree(; depth, eml_clamp=1.0e300, init_strategy=:biased, init_scale=1.0)
+
+Section 4.3 の paper-style training で使う trainable EML tree です。
+leaf logits と gate logits を保持し、soft tree と hard projection の両方を評価できます。
+"""
 struct EMLTree <: Lux.AbstractLuxLayer
     depth::Int
     n_leaves::Int

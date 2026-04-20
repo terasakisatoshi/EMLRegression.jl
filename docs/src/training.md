@@ -70,22 +70,21 @@
 
 ## snapping
 
-学習後の logits を離散化する処理は [`snap_logits`](@ref) と [`snap_model`](@ref) にあります。
+学習後の logits を離散化する処理は [`snap_logits`](@ref)、[`analyze_snap`](@ref)、[`hard_project`](@ref) にあります。
 
-現状は plain argmax だけではなく、`top-k` 候補を beam search する `search_recovered_tree` を先に通します。これは depth 3/4 の strict recovery を押し上げるための実装上の工夫です。
+現状の `run_experiment` は plain hard projection だけでなく、内部で beam-style の recovery refinement を通します。これは depth 3/4 以降の strict recovery を押し上げるための実装上の工夫です。
 
 ## blind recovery 判定
 
 最終判定は [`recovery_verdict`](@ref) と [`run_experiment`](@ref) が担当します。
 
-現在は strict recovery として
+現在の recovery 指標は主に
 
-- `snap_status == :ok`
-- `structure_match == true`
-- `numerical_match == true`
-- `training_failure_reason == :no_failure`
+- `fit_success`
+- `symbol_success`
+- `stable_symbol_success`
 
-を見ています。理想的にはここに、より厳密な symbolic verification や外挿点での評価も加えるべきです。
+を見ています。`stable_symbol_success` は snapped candidate が十分に正確で、かつ ambiguity が閾値以下のときに真になります。理想的にはここに、より厳密な symbolic verification や外挿点での評価も加えるべきです。
 
 ## 今後の強化ポイント
 

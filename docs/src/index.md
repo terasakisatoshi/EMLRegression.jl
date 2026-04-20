@@ -13,7 +13,7 @@
 - [学習方法](training.md)
   現在の学習実装が何をしているか、論文の理想形とどこが違うかを説明します。
 - [学習チュートリアル](training-tutorial.md)
-  `TrainConfig` から `run_training`、`run_experiment`、`snap_model` までをコードで追います。
+  `TrainConfig` から `run_training`、`run_experiment`、`hard_project` までをコードで追います。
 - [発展: 低レベル学習 API](advanced-training.md)
   `MasterTree`、`EMLTreeLayer`、`Lux.setup`、`Lux.apply` を直接触ります。
 - [論文の要点と解説](paper.md)

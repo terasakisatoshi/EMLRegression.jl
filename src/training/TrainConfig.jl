@@ -1,3 +1,9 @@
+"""
+    TrainConfig
+
+`run_training` / `run_experiment` に渡す学習設定です。
+探索段階と hardening 段階の反復回数、温度、loss 係数、recovery 判定閾値をまとめます。
+"""
 Base.@kwdef struct TrainConfig
     depth::Int
     target::Symbol
@@ -46,6 +52,12 @@ Base.@kwdef struct TrainConfig
     generalization_points::Int = 4000
 end
 
+"""
+    TrainingResult
+
+`run_training` の返り値です。
+学習中に収集した metric、failure reason、最終 parameter/state、summary diagnostics を保持します。
+"""
 struct TrainingResult
     config::TrainConfig
     metrics::Dict{Symbol,Vector{Float64}}

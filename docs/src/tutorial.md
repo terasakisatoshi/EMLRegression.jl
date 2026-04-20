@@ -284,6 +284,6 @@ sed -n '1,80p' results/summaries/summary.csv
 
 1. [学習方法](training.md)
 2. [論文の要点と解説](paper.md)
-3. [scripts/run_experiment.jl](/Users/terasaki/tmp/eml/scripts/run_experiment.jl)
-4. [src/eval/Recovery.jl](/Users/terasaki/tmp/eml/src/eval/Recovery.jl)
-5. [src/targets/TargetRegistry.jl](/Users/terasaki/tmp/eml/src/targets/TargetRegistry.jl)
+3. `scripts/run_experiment.jl`
+4. `src/eval/Recovery.jl`
+5. `src/targets/TargetRegistry.jl`
