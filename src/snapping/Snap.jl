@@ -16,7 +16,7 @@ softmax/sigmoid 確率を見て、閾値以内に hard snap できない leaf/ga
 """
 function analyze_snap(ps; snap_threshold::Float64=0.01)
     leaf_probs = _softmax_rows(ps.leaf_logits, 1.0)
-    gate_probs = 1.0 ./ (1.0 .+ exp.(-ps.blend_logits))
+    gate_probs = _gate_probs(ps.blend_logits, 1.0)
 
     names = ("1", "x", "y")
     uncertain_leaves = String[]
@@ -73,4 +73,247 @@ function hard_project!(ps; k::Float64=24.0)
     end
     ps.blend_logits .= ifelse.(ps.blend_logits .>= 0.0, k, -k)
     return ps
+end
+
+function _copy_params(ps)
+    return (
+        leaf_logits=copy(ps.leaf_logits),
+        blend_logits=copy(ps.blend_logits),
+    )
+end
+
+function _uncertain_snap_moves(ps; snap_threshold::Float64=0.01, k::Float64=24.0)
+    leaf_probs = _softmax_rows(ps.leaf_logits, 1.0)
+    gate_probs = _gate_probs(ps.blend_logits, 1.0)
+    moves = Tuple[]
+
+    for i in axes(leaf_probs, 1)
+        probs = vec(leaf_probs[i, :])
+        maximum(probs) >= 1.0 - snap_threshold && continue
+        for choice in axes(ps.leaf_logits, 2)
+            push!(moves, (:leaf, i, choice, k))
+        end
+    end
+
+    for i in axes(gate_probs, 1)
+        for j in axes(gate_probs, 2)
+            p = gate_probs[i, j]
+            if snap_threshold < p < 1.0 - snap_threshold
+                push!(moves, (:gate, i, j, -k))
+                push!(moves, (:gate, i, j, k))
+            end
+        end
+    end
+
+    return moves
+end
+
+function _move_key(move)
+    kind, i, j, value = move
+    return (kind, i, j, value)
+end
+
+function _push_unique_move!(moves, seen, move)
+    key = _move_key(move)
+    key in seen && return
+    push!(moves, move)
+    push!(seen, key)
+end
+
+function _candidate_snap_moves(
+    ps;
+    snap_threshold::Float64=0.01,
+    k::Float64=24.0,
+)
+    leaf_probs = _softmax_rows(ps.leaf_logits, 1.0)
+    gate_probs = _gate_probs(ps.blend_logits, 1.0)
+    moves = Tuple[]
+    seen = Set()
+
+    stable_leaf_moves = Tuple{Float64,Tuple}[]
+    for i in axes(leaf_probs, 1)
+        probs = vec(leaf_probs[i, :])
+        max_p = maximum(probs)
+        if max_p < 1.0 - snap_threshold
+            for choice in axes(ps.leaf_logits, 2)
+                _push_unique_move!(moves, seen, (:leaf, i, choice, k))
+            end
+            continue
+        end
+
+        order = sortperm(probs; rev=true)
+        best_choice = order[1]
+        for alt_choice in order[2:end]
+            margin = probs[best_choice] - probs[alt_choice]
+            push!(stable_leaf_moves, (margin, (:leaf, i, alt_choice, k)))
+        end
+    end
+
+    stable_gate_moves = Tuple{Float64,Tuple}[]
+    for i in axes(gate_probs, 1)
+        for j in axes(gate_probs, 2)
+            p = gate_probs[i, j]
+            if snap_threshold < p < 1.0 - snap_threshold
+                _push_unique_move!(moves, seen, (:gate, i, j, -k))
+                _push_unique_move!(moves, seen, (:gate, i, j, k))
+                continue
+            end
+
+            margin = abs(p - 0.5)
+            push!(stable_gate_moves, (margin, (:gate, i, j, p >= 0.5 ? -k : k)))
+        end
+    end
+
+    sort!(stable_leaf_moves; by=first)
+    for (_, move) in stable_leaf_moves
+        _push_unique_move!(moves, seen, move)
+    end
+
+    sort!(stable_gate_moves; by=first)
+    for (_, move) in stable_gate_moves
+        _push_unique_move!(moves, seen, move)
+    end
+
+    return moves
+end
+
+function _apply_snap_move(ps, move)
+    kind, i, j, value = move
+    candidate = _copy_params(ps)
+    if kind === :leaf
+        candidate.leaf_logits[i, :] .= -value
+        candidate.leaf_logits[i, j] = value
+    else
+        candidate.blend_logits[i, j] = value
+    end
+    return candidate
+end
+
+function _snap_state_key(ps)
+    parts = String[]
+    sizehint!(parts, length(ps.leaf_logits) + length(ps.blend_logits))
+    for value in ps.leaf_logits
+        push!(parts, string(value))
+    end
+    push!(parts, "|")
+    for value in ps.blend_logits
+        push!(parts, string(value))
+    end
+    return join(parts, ",")
+end
+
+function _projected_snap_metrics(
+    tree::EMLTree,
+    ps,
+    st,
+    x_train,
+    y_train,
+    t_train;
+    tau::Float64=0.01,
+    snap_threshold::Float64=0.01,
+    k::Float64=24.0,
+)
+    snapped = hard_project(ps; k=k)
+    snap_mse, snap_max_real, snap_max_imag = evaluate(tree, snapped, st, x_train, y_train, t_train; tau=tau)
+    return (
+        snapped_params=snapped,
+        snap_info=analyze_snap(ps; snap_threshold=snap_threshold),
+        snap_mse=snap_mse,
+        snap_max_real=snap_max_real,
+        snap_max_imag=snap_max_imag,
+    )
+end
+
+function _snap_metrics_better(candidate_metrics, best_metrics; mse_tol::Float64=1.0e-18)
+    if candidate_metrics.snap_mse + mse_tol < best_metrics.snap_mse
+        return true
+    end
+
+    if abs(candidate_metrics.snap_mse - best_metrics.snap_mse) <= mse_tol
+        return candidate_metrics.snap_info.n_uncertain < best_metrics.snap_info.n_uncertain
+    end
+
+    return false
+end
+
+function _default_snap_max_steps(ps; snap_threshold::Float64=0.01, min_steps::Int=8, max_steps::Int=32)
+    info = analyze_snap(ps; snap_threshold=snap_threshold)
+    return clamp(info.n_uncertain + min_steps, min_steps, max_steps)
+end
+
+function _refine_snap_projection(
+    tree::EMLTree,
+    ps,
+    st,
+    x_train,
+    y_train,
+    t_train;
+    tau::Float64=0.01,
+    snap_threshold::Float64=0.01,
+    k::Float64=24.0,
+    max_steps::Int=0,
+    beam_width::Int=64,
+)
+    max_steps = max_steps > 0 ? max_steps : _default_snap_max_steps(ps; snap_threshold=snap_threshold)
+    best_params = _copy_params(ps)
+    best_metrics = _projected_snap_metrics(
+        tree,
+        best_params,
+        st,
+        x_train,
+        y_train,
+        t_train;
+        tau=tau,
+        snap_threshold=snap_threshold,
+        k=k,
+    )
+    improved = false
+    frontier = [(params=best_params, metrics=best_metrics)]
+    seen = Set([_snap_state_key(best_params)])
+
+    for _ in 1:max_steps
+        candidates = NamedTuple[]
+
+        for state in frontier
+            for move in _candidate_snap_moves(state.params; snap_threshold=snap_threshold, k=k)
+                candidate = _apply_snap_move(state.params, move)
+                key = _snap_state_key(candidate)
+                key in seen && continue
+                push!(seen, key)
+
+                candidate_metrics = _projected_snap_metrics(
+                    tree,
+                    candidate,
+                    st,
+                    x_train,
+                    y_train,
+                    t_train;
+                    tau=tau,
+                    snap_threshold=snap_threshold,
+                    k=k,
+                )
+                push!(candidates, (params=candidate, metrics=candidate_metrics))
+
+                if _snap_metrics_better(candidate_metrics, best_metrics)
+                    best_params = candidate
+                    best_metrics = candidate_metrics
+                    improved = true
+                end
+            end
+        end
+
+        isempty(candidates) && break
+        sort!(candidates; by=state -> (state.metrics.snap_mse, state.metrics.snap_info.n_uncertain))
+        frontier = candidates[1:min(beam_width, length(candidates))]
+    end
+
+    return (
+        params=best_params,
+        snapped_params=best_metrics.snapped_params,
+        snap_info=best_metrics.snap_info,
+        snap_mse=best_metrics.snap_mse,
+        snap_max_real=best_metrics.snap_max_real,
+        snap_max_imag=best_metrics.snap_max_imag,
+        improved=improved,
+    )
 end

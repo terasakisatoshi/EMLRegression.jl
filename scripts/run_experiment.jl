@@ -23,6 +23,7 @@ function load_cfg(path, target_name, parsed=Dict{String,String}())
     target = get_target(Symbol(target_name))
     target.depth == cfg["depth"] || error("config depth $(cfg["depth"]) does not match target $(target_name) depth $(target.depth)")
     config_name = get(parsed, "--config-name", cfg["name"])
+    family = get(parsed, "--family", get(cfg, "family", config_name))
 
     return TrainConfig(
         depth=target.depth,
@@ -37,29 +38,45 @@ function load_cfg(path, target_name, parsed=Dict{String,String}())
         lr=_override_float(parsed, "--lr", get(cfg, "lr", 1.0e-2)),
         tau_search=_override_float(parsed, "--tau-search", get(cfg, "tau_search", 2.5)),
         tau_hard=_override_float(parsed, "--tau-hard", get(cfg, "tau_hard", 0.01)),
+        hardening_tau_power=_override_float(parsed, "--hardening-tau-power", get(cfg, "hardening_tau_power", 2.0)),
+        hardening_lr_floor=_override_float(parsed, "--hardening-lr-floor", get(cfg, "hardening_lr_floor", 0.01)),
+        patience=_override_int(parsed, "--patience", get(cfg, "patience", 4200)),
+        patience_threshold=_override_float(parsed, "--patience-threshold", get(cfg, "patience_threshold", 1.0e-2)),
+        plateau_rtol=_override_float(parsed, "--plateau-rtol", get(cfg, "plateau_rtol", 1.0e-3)),
         lam_ent_hard=_override_float(parsed, "--lam-ent-hard", get(cfg, "lam_ent_hard", 2.0e-2)),
         lam_bin_hard=_override_float(parsed, "--lam-bin-hard", get(cfg, "lam_bin_hard", 2.0e-2)),
         lam_inter=_override_float(parsed, "--lam-inter", get(cfg, "lam_inter", 1.0e-4)),
         inter_threshold=_override_float(parsed, "--inter-threshold", get(cfg, "inter_threshold", 50.0)),
+        eml_clamp=_override_float(parsed, "--eml-clamp", get(cfg, "eml_clamp", 1.0e300)),
         eval_every=_override_int(parsed, "--eval-every", get(cfg, "eval_every", 200)),
         tail_eval_every=_override_int(parsed, "--tail-eval-every", get(cfg, "tail_eval_every", 50)),
+        tail_eval_tau=_override_float(parsed, "--tail-eval-tau", get(cfg, "tail_eval_tau", 0.2)),
+        early_stop_count=_override_int(parsed, "--early-stop-count", get(cfg, "early_stop_count", 10)),
+        hard_trigger_mse=_override_float(parsed, "--hard-trigger-mse", get(cfg, "hard_trigger_mse", 1.0e-20)),
+        hard_trigger_count=_override_int(parsed, "--hard-trigger-count", get(cfg, "hard_trigger_count", 3)),
+        nan_restart_patience=_override_int(parsed, "--nan-restart-patience", get(cfg, "nan_restart_patience", 50)),
+        max_nan_restarts=_override_int(parsed, "--max-nan-restarts", get(cfg, "max_nan_restarts", 100)),
         fit_success_thr=_override_float(parsed, "--fit-success-thr", get(cfg, "fit_success_thr", 1.0e-6)),
         success_thr=_override_float(parsed, "--success-thr", get(cfg, "success_thr", 1.0e-20)),
         snap_threshold=_override_float(parsed, "--snap-threshold", get(cfg, "snap_threshold", 0.01)),
         max_uncertain_success=_override_int(parsed, "--max-uncertain-success", get(cfg, "max_uncertain_success", 0)),
+        lbfgs_steps=_override_int(parsed, "--lbfgs-steps", get(cfg, "lbfgs_steps", 0)),
+        lbfgs_lr=_override_float(parsed, "--lbfgs-lr", get(cfg, "lbfgs_lr", 0.6)),
+        grad_clip_norm=_override_float(parsed, "--grad-clip-norm", get(cfg, "grad_clip_norm", 1.0)),
         data_lo=_override_float(parsed, "--data-lo", get(cfg, "data_lo", 1.0)),
         data_hi=_override_float(parsed, "--data-hi", get(cfg, "data_hi", 3.0)),
         data_step=_override_float(parsed, "--data-step", get(cfg, "data_step", 0.1)),
         gen_lo=_override_float(parsed, "--gen-lo", get(cfg, "gen_lo", 0.5)),
         gen_hi=_override_float(parsed, "--gen-hi", get(cfg, "gen_hi", 5.0)),
         generalization_points=_override_int(parsed, "--generalization-points", get(cfg, "generalization_points", 4000)),
-    ), Dict("name" => config_name)
+    ), Dict("name" => config_name, "family" => family)
 end
 
 function write_raw_result(config_meta, cfg, seed, outcome)
     mkpath("results/raw")
     result = Dict(
         "config_name" => config_meta["name"],
+        "family" => config_meta["family"],
         "depth" => cfg.depth,
         "target" => String(cfg.target),
         "tier" => String(get_target(cfg.target).tier),
@@ -68,22 +85,43 @@ function write_raw_result(config_meta, cfg, seed, outcome)
         "fit_success" => outcome.recovery.fit_success,
         "symbol_success" => outcome.recovery.symbol_success,
         "stable_symbol_success" => outcome.recovery.stable_symbol_success,
+        "extern_style_fit_success" => outcome.pre_recovery.fit_success,
+        "extern_style_symbol_success" => outcome.pre_recovery.symbol_success,
+        "extern_style_stable_symbol_success" => outcome.pre_recovery.stable_symbol_success,
         "success" => outcome.recovery.success,
+        "pre_recovery_n_uncertain" => outcome.pre_recovery.n_uncertain,
         "n_uncertain" => outcome.recovery.n_uncertain,
         "failure_reason" => string(outcome.training.failure_reason),
         "nan_restarts" => get(outcome.training.summary, :nan_restarts, 0),
         "nonfinite_steps" => get(outcome.training.summary, :nonfinite_steps, 0),
+        "nonfinite_grad_steps" => get(outcome.training.summary, :nonfinite_grad_steps, 0),
+        "pre_recovery_snap_mse" => _json_float(outcome.pre_recovery.snap_mse),
+        "pre_recovery_snap_rmse" => _json_float(outcome.pre_recovery.snap_rmse),
         "snap_mse" => _json_float(outcome.recovery.snap_mse),
         "snap_rmse" => _json_float(outcome.recovery.snap_rmse),
         "snap_max_real" => _json_float(outcome.recovery.snap_max_real),
         "snap_max_imag" => _json_float(outcome.recovery.snap_max_imag),
         "hardening_iter" => outcome.recovery.hardening_iter,
+        "lbfgs_steps" => cfg.lbfgs_steps,
+        "lbfgs_lr" => cfg.lbfgs_lr,
+        "hardening_reason" => begin
+            reason = get(outcome.training.summary, :hardening_reason, nothing)
+            isnothing(reason) ? nothing : string(reason)
+        end,
+        "best_hard_mse" => _json_float(get(outcome.training.summary, :best_hard_mse, NaN)),
+        "final_hard_mse" => _json_float(get(outcome.training.summary, :final_hard_mse, NaN)),
+        "uncertainty_power" => _json_float(get(outcome.training.summary, :uncertainty_power, NaN)),
         "soft_rmse_last" => _json_float(isempty(outcome.training.metrics[:soft_rmse]) ? NaN : outcome.training.metrics[:soft_rmse][end]),
         "hard_rmse_last" => _json_float(isempty(outcome.training.metrics[:hard_rmse]) ? NaN : outcome.training.metrics[:hard_rmse][end]),
         "snap_info" => Dict(
             "uncertain_leaves" => outcome.snap.uncertain_leaves,
             "uncertain_gates" => outcome.snap.uncertain_gates,
             "n_uncertain" => outcome.snap.n_uncertain,
+        ),
+        "pre_snap_info" => Dict(
+            "uncertain_leaves" => outcome.pre_snap.uncertain_leaves,
+            "uncertain_gates" => outcome.pre_snap.uncertain_gates,
+            "n_uncertain" => outcome.pre_snap.n_uncertain,
         ),
     )
     path = joinpath("results/raw", "$(config_meta["name"])-$(cfg.target)-seed$(seed).json")

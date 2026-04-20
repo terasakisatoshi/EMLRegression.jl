@@ -1,6 +1,7 @@
 Base.@kwdef struct TrainConfig
     depth::Int
     target::Symbol
+    seed::Int = 1
     batch_size::Int = 0
     init_strategy::Symbol = :biased
     init_expr::Union{Nothing,String} = nothing
@@ -36,6 +37,7 @@ Base.@kwdef struct TrainConfig
     lbfgs_steps::Int = 0
     lbfgs_lr::Float64 = 0.6
     grad_clip_norm::Float64 = 1.0
+    diagnostics_limit::Int = 64
     data_lo::Float64 = 1.0
     data_hi::Float64 = 3.0
     data_step::Float64 = 0.1
@@ -51,4 +53,7 @@ struct TrainingResult
     params
     state
     summary::Dict{Symbol,Any}
+    nonfinite_steps::Int
+    nan_restarts::Int
+    diagnostics::Dict{Symbol,Vector{Any}}
 end
